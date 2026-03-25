@@ -1,0 +1,122 @@
+{
+  "info": {
+    "_postman_id": "4ef8bcce-5a8f-41cf-8489-8dc930551d77",
+    "name": "Julia rental API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "34123676"
+  },
+  "item": [
+    {
+      "name": "List car",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/cars",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "cars"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Car by Slug",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8080/api/cars/audi-q5",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "cars",
+            "audi-q5"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create car POST",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"brand\": \"Audi\",\r\n  \"model\": \"Q5\",\r\n  \"category\": \"SUV\",\r\n  \"slug\": \"audi-q5-2022\",\r\n  \"pricePerDay\": 120,\r\n  \"transmission\": \"Automatic\",\r\n  \"fuel\": \"Petrol\",\r\n  \"seats\": 5,\r\n  \"heroImage\": \"https://images.unsplash.com/photo-1617814076367-b759c7d7e738\",\r\n  \"whatsappMessage\": \"Hello, I would like to reserve the Audi Q5.\",\r\n  \"description\": \"Luxury SUV with quattro all-wheel drive, leather interior, and advanced driver assistance systems.\",\r\n  \"equipments\": [\r\n    \"Leather seats\",\r\n    \"360 Camera\",\r\n    \"Panoramic roof\",\r\n    \"Apple CarPlay\",\r\n    \"Android Auto\"\r\n  ],\r\n  \"gallery\": [\r\n    {\r\n      \"label\": \"Front view\",\r\n      \"imageUrl\": \"https://images.unsplash.com/photo-1503376780353-7e6692767b70\"\r\n    },\r\n    {\r\n      \"label\": \"Interior\",\r\n      \"imageUrl\": \"https://images.unsplash.com/photo-1549924231-f129b911e442\"\r\n    }\r\n  ]\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/cars",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "cars"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Update car PUT",
+      "request": {
+        "method": "PUT",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "  {\r\n        \"brand\": \"Clio\",\r\n        \"category\": \"SUV Premium\",\r\n        \"description\": \"SUV premium avec quattro et intérieur cuir.\",\r\n        \"equipments\": [\r\n            \"Cuir\",\r\n            \"360° Camera\",\r\n            \"Toit panoramique\"\r\n        ],\r\n        \"fuel\": \"electric\",\r\n        \"gallery\": [\r\n            {\r\n                \"imageUrl\": \"https://media.ouest-france.fr/v1/pictures/MjAyNTA2MTUxNjNkYzhjZmVhNTU0ZmZkMzg1MTdmNjY3ODJhY2Q?width=1260&height=708&focuspoint=50%2C25&cropresize=1&client_id=bpeditorial&sign=1b098c1bf5e2b4decfc80a1a30139f31db95d0afd9c134eb575470199ea3894b\",\r\n                \"label\": \"Extérieur\"\r\n            },\r\n            {\r\n                \"imageUrl\": \"https://www.sovab-renault-batilly.fr/data/renault-clio-5-interieur-poste-conduite.jpg\",\r\n                \"label\": \"Intérieur\"\r\n            }\r\n        ],\r\n        \"heroImage\": \"https://media.ouest-france.fr/v1/pictures/MjAyNTA2MTUxNjNkYzhjZmVhNTU0ZmZkMzg1MTdmNjY3ODJhY2Q?width=1260&height=708&focuspoint=50%2C25&cropresize=1&client_id=bpeditorial&sign=1b098c1bf5e2b4decfc80a1a30139f31db95d0afd9c134eb575470199ea3894b\",\r\n        \"id\": 1,\r\n        \"model\": \"Q5\",\r\n        \"pricePerDay\": 650,\r\n        \"seats\": 5,\r\n        \"slug\": \"audi-q5\",\r\n        \"transmission\": \"Automatique\",\r\n        \"whatsappMessage\": \"Bonjour, je souhaite réserver l'Audi Q5.\"\r\n    }",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/cars/1",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "cars",
+            "1"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

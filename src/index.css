@@ -1,0 +1,120 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 6%;
+    --foreground: 0 0% 100%;
+
+    --card: 222 40% 10%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 222 40% 10%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 216 100% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 222 30% 15%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 222 25% 18%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 48 100% 50%;
+    --accent-foreground: 222 47% 6%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 20% 20%;
+    --input: 222 20% 20%;
+    --ring: 216 100% 53%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 222 40% 8%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-primary: 216 100% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 30% 15%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 222 20% 20%;
+    --sidebar-ring: 216 100% 53%;
+
+    --glass-bg: 222 40% 10% / 0.6;
+    --glass-border: 0 0% 100% / 0.1;
+    --neon-glow: 216 100% 53%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-card/60 backdrop-blur-xl border border-foreground/10 rounded-xl;
+    box-shadow: 0 8px 32px hsla(var(--primary) / 0.1);
+  }
+
+  .glass-nav {
+    @apply bg-background/80 backdrop-blur-xl border-b border-foreground/5;
+  }
+
+  .neon-border {
+    @apply border border-primary/30;
+    box-shadow: 0 0 15px hsla(var(--primary) / 0.15), inset 0 0 15px hsla(var(--primary) / 0.05);
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-primary to-accent;
+  }
+
+  .btn-primary-glow {
+    @apply bg-primary text-primary-foreground font-semibold px-8 py-3 rounded-lg transition-all duration-300;
+    box-shadow: 0 0 20px hsla(var(--primary) / 0.4);
+  }
+  .btn-primary-glow:hover {
+    box-shadow: 0 0 30px hsla(var(--primary) / 0.6);
+    @apply scale-105;
+  }
+
+  .btn-accent-glow {
+    @apply bg-accent text-accent-foreground font-semibold px-8 py-3 rounded-lg transition-all duration-300;
+    box-shadow: 0 0 20px hsla(var(--accent) / 0.3);
+  }
+  .btn-accent-glow:hover {
+    box-shadow: 0 0 30px hsla(var(--accent) / 0.5);
+    @apply scale-105;
+  }
+
+  .section-padding {
+    @apply py-20 md:py-28 px-4 md:px-8;
+  }
+
+  .car-card-hover {
+    @apply transition-all duration-500;
+  }
+  .car-card-hover:hover {
+    @apply -translate-y-2;
+    box-shadow: 0 20px 60px hsla(var(--primary) / 0.2);
+  }
+}
+
+@layer utilities {
+  .text-gradient-gold {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-accent to-yellow-300;
+  }
+}
