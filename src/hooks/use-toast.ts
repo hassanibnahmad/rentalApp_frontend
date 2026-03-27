@@ -2,8 +2,8 @@ import * as React from "react";
 
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
-const TOAST_LIMIT = 1;
-const TOAST_REMOVE_DELAY = 1000000;
+const TOAST_LIMIT = 2;
+const TOAST_REMOVE_DELAY = 8000;
 
 type ToasterToast = ToastProps & {
   id: string;
@@ -134,6 +134,27 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">;
 
+const isBrowser = typeof window !== "undefined";
+
+const resolveHapticFeedback = () => {
+  if (!isBrowser) {
+    return () => {};
+  }
+  const vibrate = window.navigator?.vibrate;
+  if (!vibrate) {
+    return () => {};
+  }
+  return (pattern = [16]) => {
+    try {
+      vibrate(pattern);
+    } catch (vibrateError) {
+      console.warn("Vibration impossible", vibrateError);
+    }
+  };
+};
+
+const triggerVibration = resolveHapticFeedback();
+
 function toast({ ...props }: Toast) {
   const id = genId();
 
@@ -155,6 +176,12 @@ function toast({ ...props }: Toast) {
       },
     },
   });
+
+  if (props.variant === "destructive") {
+    triggerVibration([30, 40, 30]);
+  } else {
+    triggerVibration([20]);
+  }
 
   return {
     id: id,

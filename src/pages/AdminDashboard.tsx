@@ -515,7 +515,15 @@ const AdminDashboard = () => {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!formState.brand || !formState.model || !formState.image) {
+    const trimmedBrand = formState.brand.trim();
+    const trimmedModel = formState.model.trim();
+    const coverImage = formState.image.trim();
+    if (!trimmedBrand || !trimmedModel || !coverImage) {
+      toast({
+        title: "Ce champ est requis",
+        description: "Renseignez la marque, le modèle et l'image principale avant d'enregistrer.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -523,25 +531,47 @@ const AdminDashboard = () => {
     try {
       if (editingSlug) {
         if (editingRemoteId == null) {
-          alert("Cette voiture n'est pas encore reliée au serveur central.");
+          toast({
+            title: "Action indisponible",
+            description: "Cette voiture n'est pas encore reliée au serveur central.",
+            variant: "destructive",
+          });
           return;
         }
         const existingCar = cars.find((car) => car.remoteId === editingRemoteId);
         if (!existingCar) {
-          alert("Voiture introuvable.");
+          toast({
+            title: "Voiture introuvable",
+            description: "Rechargez le tableau de bord puis réessayez",
+            variant: "destructive",
+          });
           return;
         }
         const payload = buildCarRecord(formState, existingCar);
         await updateCar(editingRemoteId, payload);
+        toast({
+          title: "Fiche mise à jour",
+          description: `${payload.brand} ${payload.model} est à jour dans le catalogue.`,
+        });
       } else {
         const payload = buildCarRecord(formState);
         await addCar(payload);
+        toast({
+          title: "Voiture publiée",
+          description: `${payload.brand} ${payload.model} est disponible pour vos équipes.`,
+        });
       }
 
       clearForm();
     } catch (actionError) {
       console.error("Impossible d'enregistrer la voiture", actionError);
-      alert("Erreur lors de l'enregistrement. Vérifiez la console pour plus de détails.");
+      toast({
+        title: "Impossible d'enregistrer",
+        description: resolveFriendlyError(actionError, {
+          defaultMessage: "Serveur injoignable. Vérifiez vos informations puis réessayez.",
+        }),
+        variant: "destructive",
+      });
     } finally {
       setPendingAction(false);
     }
@@ -549,9 +579,12 @@ const AdminDashboard = () => {
 
   const handleEdit = (car: CarDetail) => {
     if (car.remoteId == null) {
-      alert(
-        "Cette voiture provient des données locales et ne peut pas être modifiée tant que la synchronisation avec le serveur n'est pas terminée.",
-      );
+      toast({
+        title: "Modification impossible",
+        description:
+          "Cette voiture provient des données locales. Synchronisez-la avant de pouvoir la modifier.",
+        variant: "destructive",
+      });
       return;
     }
     setEditingSlug(car.id);
@@ -576,7 +609,11 @@ const AdminDashboard = () => {
 
   const handleDelete = (car: CarDetail) => {
     if (car.remoteId == null) {
-      alert("Cette voiture n'est pas synchronisée avec le serveur central.");
+      toast({
+        title: "Suppression bloquée",
+        description: "Synchronisez ce véhicule avant de pouvoir le supprimer.",
+        variant: "destructive",
+      });
       return;
     }
     setConfirmDialog({ type: "car-delete", car });
@@ -629,14 +666,26 @@ const AdminDashboard = () => {
 
   const deleteCarRecord = async (car: CarDetail) => {
     if (car.remoteId == null) {
-      alert("Cette voiture n'est pas synchronisée avec le serveur central.");
+      toast({
+        title: "Suppression bloquée",
+        description: "Synchronisez ce véhicule avant de pouvoir le supprimer.",
+        variant: "destructive",
+      });
       throw new Error("Unsynced car");
     }
     try {
       await deleteCar(car.remoteId);
+      toast({
+        title: "Voiture supprimée",
+        description: `${car.brand} ${car.model} a quitté le catalogue connecté.`,
+      });
     } catch (deleteError) {
       console.error("Suppression impossible", deleteError);
-      alert("Erreur lors de la suppression.");
+      toast({
+        title: "Suppression impossible",
+        description: "Le serveur n'a pas pu retirer ce véhicule. Réessayez dans un instant.",
+        variant: "destructive",
+      });
       throw deleteError;
     }
   };
@@ -661,9 +710,17 @@ const AdminDashboard = () => {
     try {
       await resetCars();
       clearForm();
+      toast({
+        title: "Flotte restaurée",
+        description: "La configuration de démonstration est de nouveau en ligne.",
+      });
     } catch (resetError) {
       console.error("Erreur lors de la restauration", resetError);
-      alert("Impossible de restaurer la flotte.");
+      toast({
+        title: "Restauration impossible",
+        description: "Le serveur n'a pas pu réinitialiser la flotte. Réessayez plus tard.",
+        variant: "destructive",
+      });
       throw resetError;
     } finally {
       setResetting(false);

@@ -155,21 +155,61 @@ const performLogin = async (credentials: LoginCredentials): Promise<LoginRespons
   };
 };
 
+const AUTH_ERROR_COPY = {
+  wrongCredentials: "Email ou mot de passe incorrect",
+  wrongPassword: "Mot de passe incorrect",
+  accountMissing: "Votre compte n'existe pas",
+  rateLimited: "Trop de tentatives, réessayez plus tard",
+  generic: "Connexion impossible pour le moment.",
+};
+
+const interpretTextError = (message: string) => {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("mot de passe") || normalized.includes("password")) {
+    return AUTH_ERROR_COPY.wrongPassword;
+  }
+  if (normalized.includes("identifiants") || normalized.includes("credential") || normalized.includes("unauthorized")) {
+    return AUTH_ERROR_COPY.wrongCredentials;
+  }
+  if (normalized.includes("not exist") || normalized.includes("introuvable")) {
+    return AUTH_ERROR_COPY.accountMissing;
+  }
+  if (normalized.includes("too many") || normalized.includes("429")) {
+    return AUTH_ERROR_COPY.rateLimited;
+  }
+  return AUTH_ERROR_COPY.generic;
+};
+
 const resolveErrorMessage = (error: unknown) => {
   if (axios.isAxiosError(error)) {
-    const serverMessage = error.response?.data as { message?: string } | undefined;
-    if (serverMessage?.message) {
-      return serverMessage.message;
+    const status = error.response?.status;
+    const serverMessage = (error.response?.data as { message?: string } | undefined)?.message;
+    if (typeof serverMessage === "string" && serverMessage.trim().length > 0) {
+      return serverMessage;
     }
-    return error.message;
+    switch (status) {
+      case 401:
+        return AUTH_ERROR_COPY.wrongCredentials;
+      case 403:
+        return AUTH_ERROR_COPY.wrongPassword;
+      case 404:
+        return AUTH_ERROR_COPY.accountMissing;
+      case 429:
+        return AUTH_ERROR_COPY.rateLimited;
+      default:
+        break;
+    }
+    if (error.message) {
+      return interpretTextError(error.message);
+    }
   }
   if (error instanceof Error && error.message) {
-    return error.message;
+    return interpretTextError(error.message);
   }
-  if (typeof error === "string") {
-    return error;
+  if (typeof error === "string" && error.trim().length > 0) {
+    return interpretTextError(error);
   }
-  return "Impossible de se connecter.";
+  return AUTH_ERROR_COPY.generic;
 };
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {

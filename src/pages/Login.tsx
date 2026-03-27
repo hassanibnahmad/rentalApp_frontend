@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiClient } from "@/lib/api-client";
 import { resolveFriendlyError } from "@/lib/errors";
+import { useToast } from "@/components/ui/use-toast";
 
 const mockEnabled = import.meta.env.VITE_ENABLE_MOCK_AUTH === "true";
 
@@ -14,8 +15,18 @@ const resetCopy = {
   cta: "Envoyer le lien",
 };
 
+const errorCopy = {
+  invalidEmail: "Adresse e-mail invalide",
+  requiredField: "Ce champ est requis",
+  wrongPassword: "Mot de passe incorrect",
+  wrongCredentials: "Email ou mot de passe incorrect",
+  noAccount: "Votre compte n'existe pas",
+  rateLimited: "Trop de tentatives, réessayez plus tard",
+};
+
 const Login = () => {
   const { login, isLoading } = useAuth();
+  const { toast } = useToast();
   const [credentials, setCredentials] = useState({ email: "", password: "" });
   const [error, setError] = useState<string | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
@@ -36,24 +47,34 @@ const Login = () => {
     event.preventDefault();
     const targetEmail = (resetEmail || credentials.email).trim();
     if (!targetEmail) {
-      setResetFeedback({ tone: "error", message: "Renseignez votre email professionnel." });
+      const message = errorCopy.requiredField;
+      setResetFeedback({ tone: "error", message });
+      toast({ title: "Information manquante", description: message, variant: "destructive" });
       return;
     }
     setResetFeedback(null);
     setResetLoading(true);
     try {
       await apiClient.post("/auth/forgot-password", { email: targetEmail });
+      const successMessage = "Un lien sécurisé vient d'être envoyé s'il s'agit d'un compte valide.";
       setResetFeedback({
         tone: "success",
-        message: "Un lien de réinitialisation vous sera envoyé si l'email est reconnu.",
+        message: successMessage,
       });
+      toast({ title: "Demande envoyée", description: successMessage });
     } catch (supportError) {
+      const message = resolveFriendlyError(supportError, {
+        defaultMessage: "Impossible de traiter la demande pour le moment.",
+        network: "Serveur injoignable. Merci de réessayer dans un instant.",
+      });
       setResetFeedback({
         tone: "error",
-        message: resolveFriendlyError(supportError, {
-          defaultMessage: "Impossible de traiter la demande pour le moment.",
-          network: "Serveur injoignable. Merci de réessayer dans un instant.",
-        }),
+        message,
+      });
+      toast({
+        title: "Erreur",
+        description: message,
+        variant: "destructive",
       });
     } finally {
       setResetLoading(false);
@@ -63,9 +84,31 @@ const Login = () => {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+    const trimmedEmail = credentials.email.trim();
+    if (!trimmedEmail) {
+      setError(errorCopy.requiredField);
+      toast({ title: "Adresse requise", description: errorCopy.requiredField, variant: "destructive" });
+      return;
+    }
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(trimmedEmail)) {
+      setError(errorCopy.invalidEmail);
+      toast({
+        title: errorCopy.invalidEmail,
+        description: "Utilisez une adresse professionnelle au format nom@domaine.com.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!credentials.password) {
+      setError(errorCopy.requiredField);
+      toast({ title: "Mot de passe requis", description: errorCopy.requiredField, variant: "destructive" });
+      return;
+    }
     try {
-      const user = await login(credentials);
+      const user = await login({ email: trimmedEmail, password: credentials.password });
       if (user.role === "admin") {
+        toast({ title: "Connexion réussie", description: "Bienvenue dans le centre de commandes." });
         navigate("/admin", { replace: true });
         return;
       }
@@ -75,14 +118,19 @@ const Login = () => {
         navigate("/", { replace: true });
       }
     } catch (loginError) {
-      setError(
-        resolveFriendlyError(loginError, {
-          defaultMessage: "Connexion impossible pour le moment.",
-          unauthorized: "Email ou mot de passe incorrect.",
-          forbidden: "Accès refusé pour ce compte.",
-          network: "Serveur injoignable. Vérifiez votre connexion.",
-        }),
-      );
+      const friendlyMessage = resolveFriendlyError(loginError, {
+        defaultMessage: errorCopy.wrongCredentials,
+        unauthorized: errorCopy.wrongCredentials,
+        forbidden: errorCopy.wrongPassword,
+        notFound: errorCopy.noAccount,
+        network: "Serveur injoignable. Vérifiez votre connexion.",
+      });
+      setError(friendlyMessage);
+      toast({
+        title: "Connexion refusée",
+        description: friendlyMessage,
+        variant: "destructive",
+      });
     }
   };
 
