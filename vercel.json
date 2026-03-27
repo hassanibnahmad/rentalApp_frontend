@@ -3,4 +3,3 @@
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
- //this file is used to configure the deployment of the frontend application on Vercel. It specifies that all incoming requests should be rewritten to serve the index.html file, which is common for single-page applications (SPAs) to handle client-side routing.
