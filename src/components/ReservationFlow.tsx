@@ -11,9 +11,11 @@ import {
   UserRound,
 } from "lucide-react";
 import axios from "axios";
+import jsPDF from "jspdf";
 
 import { useCarInventory } from "@/contexts/CarInventoryContext";
 import { apiClient } from "@/lib/api-client";
+import { getWhatsAppUrl } from "@/lib/contact-info";
 import { useToast } from "@/hooks/use-toast";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 
@@ -211,6 +213,51 @@ const ReservationFlow = () => {
     return cars.find((car) => car.remoteId === successData.carId) ?? null;
   }, [successData, cars]);
 
+  const reservationSummary = successData
+    ? (() => {
+        const carLabel = summaryCarForSuccess
+          ? `${summaryCarForSuccess.brand} ${summaryCarForSuccess.model}`
+          : `ID ${successData.carId}`;
+        const extrasSelected = extrasCatalog
+          .map((extra) => {
+            const quantity = form.extras[extra.id];
+            if (!quantity) {
+              return null;
+            }
+            return `${extra.label} x${quantity}`;
+          })
+          .filter((item): item is string => Boolean(item));
+        const sanitizedNotes = form.notes.trim();
+        const amountDisplay = successData.totalAmount
+          ? formatCurrency(successData.totalAmount)
+          : estimatedTotal
+          ? formatCurrency(estimatedTotal)
+          : "À confirmer";
+        const lines = [
+          `Client : ${successData.customerFirstName} ${successData.customerLastName}`,
+          `Email : ${successData.customerEmail}`,
+          `Téléphone : ${successData.customerPhone}`,
+          `Document : ${form.documentId.trim() || "Non communiqué"}`,
+          `Véhicule : ${carLabel}`,
+          `Période : ${successData.pickupDate} → ${successData.returnDate}`,
+          `Trajet : ${successData.pickupCity} → ${successData.returnCity}`,
+          extrasSelected.length ? `Extras : ${extrasSelected.join(", ")}` : "Extras : Aucun",
+          sanitizedNotes ? `Notes : ${sanitizedNotes}` : "Notes : Aucune",
+          `Montant estimé : ${amountDisplay}`,
+        ];
+        return {
+          title: `Réservation #${successData.id}`,
+          lines,
+        };
+      })()
+    : null;
+
+  const whatsappMessage = reservationSummary
+    ? ["Nouvelle demande Julia Auto Cars", reservationSummary.title, ...reservationSummary.lines].join("\n")
+    : undefined;
+
+  const whatsappUrl = getWhatsAppUrl(whatsappMessage);
+
   const isCheckingAvailability = activeStep === 0 && availabilityStatus === "checking";
 
   const clearFieldError = (field: string) => {
@@ -406,6 +453,27 @@ const ReservationFlow = () => {
     setAvailabilityMessage(null);
   };
 
+  const handleDownloadPdf = () => {
+    if (!reservationSummary || !successData) {
+      return;
+    }
+    const doc = new jsPDF();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("Résumé de réservation", 14, 18);
+    doc.setFontSize(13);
+    doc.text(reservationSummary.title, 14, 28);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    let cursorY = 38;
+    reservationSummary.lines.forEach((line) => {
+      const wrapped = doc.splitTextToSize(line, 180);
+      doc.text(wrapped, 14, cursorY);
+      cursorY += wrapped.length * 6;
+    });
+    doc.save(`reservation-${successData.id}.pdf`);
+  };
+
   const renderFieldError = (field: string) =>
     fieldErrors[field] ? <p className="mt-1 text-xs text-rose-400">{fieldErrors[field]}</p> : null;
 
@@ -462,8 +530,17 @@ const ReservationFlow = () => {
         >
           Nouvelle demande
         </button>
+        {reservationSummary && (
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            className="inline-flex flex-1 min-w-[180px] items-center justify-center gap-2 rounded-2xl border border-white/30 px-5 py-3 text-sm font-semibold text-white hover:border-white/60"
+          >
+            <PackageCheck className="h-4 w-4" /> Télécharger votre reservation
+          </button>
+        )}
         <a
-          href="https://wa.me/212661930818?text=Bonjour%20Julia%20Auto%20Cars%2C%20j'ai%20finalis%C3%A9%20ma%20r%C3%A9servation%20en%20ligne."
+          href={whatsappUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex flex-1 min-w-[180px] items-center justify-center gap-2 rounded-2xl border border-emerald-400/40 px-5 py-3 text-sm font-semibold text-emerald-100 hover:text-emerald-50"
