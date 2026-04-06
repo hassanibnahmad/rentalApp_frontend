@@ -164,6 +164,27 @@ const ReservationFlow = () => {
   }, [resolvedCarFromQuery?.remoteId]);
 
   useEffect(() => {
+    if (searchParams.get("source") !== "admin") {
+      return;
+    }
+    const firstName = searchParams.get("firstName") ?? "";
+    const lastName = searchParams.get("lastName") ?? "";
+    const email = searchParams.get("email") ?? "";
+    const phone = searchParams.get("phone") ?? "";
+    if (!firstName && !lastName && !email && !phone) {
+      return;
+    }
+    setForm((previous) => ({
+      ...previous,
+      firstName: previous.firstName || firstName,
+      lastName: previous.lastName || lastName,
+      email: previous.email || email,
+      phone: previous.phone || phone,
+    }));
+    setActiveStep((previous) => (previous < 1 ? 1 : previous));
+  }, [searchParams]);
+
+  useEffect(() => {
     setAvailabilityStatus("idle");
     setAvailabilityMessage(null);
   }, [form.carRemoteId, form.pickupDate, form.returnDate]);
