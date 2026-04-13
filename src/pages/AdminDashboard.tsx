@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -216,6 +216,13 @@ type ReservationRecord = {
   notes?: string | null;
 };
 
+type AdminNotification = {
+  id: string;
+  text: string;
+  tone: "info" | "success" | "warning";
+  createdAt: number;
+};
+
 type ExportPeriodMode = "all" | "range";
 
 type QuickReservationForm = {
@@ -324,6 +331,8 @@ const AdminDashboard = () => {
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
   const [reservationsLoading, setReservationsLoading] = useState<boolean>(true);
   const [reservationsError, setReservationsError] = useState<string | null>(null);
+  const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [reservationProcessing, setReservationProcessing] = useState<number | null>(null);
   const [reservationStatusFilter, setReservationStatusFilter] = useState<string | null>(null);
   const [exportReservationsOpen, setExportReservationsOpen] = useState(false);
@@ -383,6 +392,24 @@ const AdminDashboard = () => {
     email: "",
     phone: "",
   });
+  const previousReservationsRef = useRef<ReservationRecord[] | null>(null);
+
+  const pushAdminNotifications = useCallback(
+    (entries: Array<Omit<AdminNotification, "id" | "createdAt">>) => {
+      if (entries.length === 0) {
+        return;
+      }
+      const now = Date.now();
+      const created = entries.map((entry, index) => ({
+        id: `${now}-${index}-${Math.random().toString(16).slice(2)}`,
+        createdAt: now - index,
+        ...entry,
+      }));
+      setAdminNotifications((previous) => [...created, ...previous].slice(0, 20));
+      setUnreadNotifications((previous) => previous + created.length);
+    },
+    [],
+  );
   const handleDashboardLogout = useCallback(() => {
     logout();
     navigate("/");
@@ -834,19 +861,80 @@ const AdminDashboard = () => {
     });
   };
 
-  const fetchReservations = useCallback(async () => {
-    setReservationsLoading(true);
+  const fetchReservations = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setReservationsLoading(true);
+    }
     try {
       const { data } = await apiClient.get<ReservationRecord[]>("/reservations");
+      const previousReservations = previousReservationsRef.current;
+
+      if (previousReservations) {
+        const previousById = new Map(previousReservations.map((reservation) => [reservation.id, reservation]));
+        const nextById = new Map(data.map((reservation) => [reservation.id, reservation]));
+        const entries: Array<Omit<AdminNotification, "id" | "createdAt">> = [];
+
+        data.forEach((reservation) => {
+          const previous = previousById.get(reservation.id);
+          if (!previous) {
+            entries.push({
+              tone: "info",
+              text: `Nouvelle réservation: ${reservation.customerFirstName} ${reservation.customerLastName}`,
+            });
+            return;
+          }
+          if (previous.status !== reservation.status) {
+            entries.push({
+              tone: reservation.status === "CONFIRMED" ? "success" : "warning",
+              text: `Réservation #${reservation.id} passée à ${reservation.status}`,
+            });
+          }
+        });
+
+        previousReservations.forEach((reservation) => {
+          if (!nextById.has(reservation.id)) {
+            entries.push({
+              tone: "warning",
+              text: `Réservation #${reservation.id} supprimée`,
+            });
+          }
+        });
+
+        pushAdminNotifications(entries);
+      } else {
+        const pendingCount = data.filter((reservation) => reservation.status === "PENDING_PAYMENT").length;
+        const latestReservation = [...data].sort((a, b) => b.id - a.id)[0];
+        const bootstrapEntries: Array<Omit<AdminNotification, "id" | "createdAt">> = [];
+
+        if (latestReservation) {
+          bootstrapEntries.push({
+            tone: "info",
+            text: `Dernière réservation: ${latestReservation.customerFirstName} ${latestReservation.customerLastName}`,
+          });
+        }
+
+        if (pendingCount > 0) {
+          bootstrapEntries.push({
+            tone: "warning",
+            text: `${pendingCount} réservation(s) en attente de validation`,
+          });
+        }
+
+        pushAdminNotifications(bootstrapEntries);
+      }
+
+      previousReservationsRef.current = data;
       setReservations(data);
       setReservationsError(null);
     } catch (reservationsFetchError) {
       console.error("Impossible de charger les réservations", reservationsFetchError);
       setReservationsError("Impossible de charger les réservations.");
     } finally {
-      setReservationsLoading(false);
+      if (!options?.silent) {
+        setReservationsLoading(false);
+      }
     }
-  }, []);
+  }, [pushAdminNotifications]);
 
   const handleQuickReservationSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -978,6 +1066,10 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     fetchReservations();
+    const intervalId = window.setInterval(() => {
+      fetchReservations({ silent: true });
+    }, 15000);
+    return () => window.clearInterval(intervalId);
   }, [fetchReservations]);
 
   const handleEmailSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1510,9 +1602,66 @@ const AdminDashboard = () => {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
+              <DropdownMenu
+                onOpenChange={(open) => {
+                  if (open) {
+                    setUnreadNotifications(0);
+                  }
+                }}
+              >
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="relative inline-flex items-center gap-2 rounded-full border border-white/15 bg-card px-4 py-2 text-sm font-semibold text-foreground hover:border-primary/40 hover:bg-primary/10"
+                  >
+                    <BellRing className="h-4 w-4" /> Notifications
+                    {unreadNotifications > 0 && (
+                      <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold text-primary-foreground">
+                        {Math.min(unreadNotifications, 99)}
+                      </span>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[340px] border-border bg-card/95 p-2 text-foreground">
+                  <p className="px-2 py-1 text-xs uppercase tracking-[0.25em] text-muted-foreground">Actions en direct</p>
+                  <DropdownMenuSeparator className="bg-border" />
+                  {adminNotifications.length === 0 ? (
+                    <div className="px-2 py-3 text-sm text-muted-foreground">Aucune nouvelle action pour le moment.</div>
+                  ) : (
+                    adminNotifications.map((notification) => (
+                      <DropdownMenuItem
+                        key={notification.id}
+                        className="flex cursor-default flex-col items-start gap-1 rounded-lg px-2 py-2 text-sm"
+                      >
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                            notification.tone === "success"
+                              ? "bg-emerald-500/15 text-emerald-300"
+                              : notification.tone === "warning"
+                                ? "bg-amber-500/15 text-amber-300"
+                                : "bg-blue-500/15 text-blue-300"
+                          }`}
+                        >
+                          {notification.tone}
+                        </span>
+                        <span className="text-foreground">{notification.text}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(notification.createdAt).toLocaleTimeString("fr-FR", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
+                        </span>
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
               <button
                 type="button"
-                onClick={fetchReservations}
+                onClick={() => {
+                  void fetchReservations();
+                }}
                 className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-card px-4 py-2 text-sm font-semibold text-foreground hover:border-primary/40 hover:bg-primary/10"
               >
                 <RefreshCcw className="h-4 w-4" /> Actualiser
@@ -1749,63 +1898,7 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            <div className="space-y-6">
-              <div className="rounded-[30px] border border-border bg-card p-6 shadow-sm">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Notifications</p>
-                  <BellRing className="h-4 w-4 text-blue-500" />
-                </div>
-                <div className="space-y-2 text-sm">
-                  {dashboardAnalytics.notifications.map((notification) => (
-                    <p
-                      key={notification.id}
-                      className="rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-foreground"
-                    >
-                      {notification.text}
-                    </p>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-[30px] border border-border bg-card p-6 shadow-sm">
-                <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Quick Actions</p>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                  <button
-                    type="button"
-                    onClick={() => setQuickReservationOpen(true)}
-                    className="rounded-xl border border-border bg-secondary/40 px-3 py-2 text-left text-foreground transition hover:border-primary/40 hover:bg-primary/10"
-                  >
-                    Add Reservation
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setQuickVehicleOpen(true)}
-                    className="rounded-xl border border-border bg-secondary/40 px-3 py-2 text-left text-foreground transition hover:border-primary/40 hover:bg-primary/10"
-                  >
-                    Add Car
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setQuickCustomerOpen(true)}
-                    className="rounded-xl border border-border bg-secondary/40 px-3 py-2 text-left text-foreground transition hover:border-primary/40 hover:bg-primary/10"
-                  >
-                    Add Customer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      switchSection("reservations");
-                      window.setTimeout(() => {
-                        document.getElementById("reservations-board")?.scrollIntoView({ behavior: "smooth" });
-                      }, 120);
-                    }}
-                    className="rounded-xl border border-border bg-secondary/40 px-3 py-2 text-left text-foreground transition hover:border-primary/40 hover:bg-primary/10"
-                  >
-                    View Calendar
-                  </button>
-                </div>
-              </div>
-            </div>
+            
           </div>
 
           <div id="insights-panel" className="mt-8 grid gap-6 xl:grid-cols-3">
@@ -2265,7 +2358,9 @@ const AdminDashboard = () => {
                   </span>
                   <button
                     type="button"
-                    onClick={fetchReservations}
+                    onClick={() => {
+                      void fetchReservations();
+                    }}
                     className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary/40"
                   >
                     <RefreshCcw className="h-4 w-4" /> Rafraîchir
@@ -2355,7 +2450,13 @@ const AdminDashboard = () => {
                   >
                     <Download className="h-4 w-4" /> Export Excel
                   </button>
-                  <button type="button" onClick={fetchReservations} className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary/40">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void fetchReservations();
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary/40"
+                  >
                     <CalendarClock className="h-4 w-4" /> Rafraîchir
                   </button>
                 </div>

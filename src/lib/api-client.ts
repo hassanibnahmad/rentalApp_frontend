@@ -1,10 +1,25 @@
 import axios from "axios";
 
-const baseURL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8080") as string;
+const configuredBaseURL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+const isProduction = import.meta.env.PROD;
+const fallbackBaseURL = isProduction
+  ? "https://rentalapp-backend-2b6s.onrender.com"
+  : "http://localhost:8080";
+const resolvedBaseURL = (configuredBaseURL && configuredBaseURL.length > 0
+  ? configuredBaseURL
+  : fallbackBaseURL
+).replace(/\/$/, "");
+
+if (!configuredBaseURL) {
+  console.warn(
+    `VITE_API_BASE_URL is missing. Using fallback backend: ${resolvedBaseURL}. Set VITE_API_BASE_URL in Vercel project settings.`,
+  );
+}
+
 const SESSION_STORAGE_KEY = "julia-auth-session";
 
 export const apiClient = axios.create({
-  baseURL: `${baseURL.replace(/\/$/, "")}/api`,
+  baseURL: `${resolvedBaseURL}/api`,
   headers: {
     "Content-Type": "application/json",
   },
