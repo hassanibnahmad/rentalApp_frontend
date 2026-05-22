@@ -3,7 +3,7 @@ import axios from "axios";
 const configuredBaseURL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
 const isProduction = import.meta.env.PROD;
 const fallbackBaseURL = isProduction
-  ? "https://rentalapp-backend-2b6s.onrender.com"
+  ? "https://rentalapp-backend-tz9z.onrender.com"
   : "http://localhost:8080";
 const resolvedBaseURL = (configuredBaseURL && configuredBaseURL.length > 0
   ? configuredBaseURL
@@ -37,14 +37,14 @@ apiClient.interceptors.request.use((config) => {
   if (typeof window === "undefined") {
     return config;
   }
-  if (!config.headers?.Authorization) {
+  const headers = axios.AxiosHeaders.from(config.headers);
+  if (!headers.has("Authorization")) {
     const rawSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
     if (rawSession) {
       try {
         const parsed = JSON.parse(rawSession) as { token?: string };
         if (parsed?.token) {
-          config.headers = config.headers ?? {};
-          config.headers.Authorization = `Bearer ${parsed.token}`;
+          headers.set("Authorization", `Bearer ${parsed.token}`);
         }
       } catch (error) {
         console.warn("Session storage corrompue. Suppression.", error);
@@ -52,6 +52,7 @@ apiClient.interceptors.request.use((config) => {
       }
     }
   }
+  config.headers = headers;
   return config;
 });
 
