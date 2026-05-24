@@ -19,6 +19,14 @@ const chipClasses = (isActive: boolean) =>
 const Voitures = () => {
   const { cars, loading } = useCarInventory();
   const catalogCars = useMemo(() => (cars.length ? cars : seedCars), [cars]);
+  const orderedCatalogCars = useMemo(
+    () =>
+      [...catalogCars]
+        .map((car, index) => ({ car, index }))
+        .sort((left, right) => (right.car.remoteId ?? right.index) - (left.car.remoteId ?? left.index))
+        .map(({ car }) => car),
+    [catalogCars],
+  );
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 0]);
@@ -26,25 +34,25 @@ const Voitures = () => {
   const [brandFilter, setBrandFilter] = useState<string>("all");
 
   const brandOptions = useMemo(
-    () => Array.from(new Set(catalogCars.map((car) => car.brand))).sort(),
-    [catalogCars],
+    () => Array.from(new Set(orderedCatalogCars.map((car) => car.brand))).sort(),
+    [orderedCatalogCars],
   );
 
   const priceBounds = useMemo(() => {
-    if (!catalogCars.length) {
+    if (!orderedCatalogCars.length) {
       return { min: 0, max: 0 };
     }
-    const prices = catalogCars.map((car) => car.pricePerDay);
+    const prices = orderedCatalogCars.map((car) => car.pricePerDay);
     return { min: Math.min(...prices), max: Math.max(...prices) };
-  }, [catalogCars]);
+  }, [orderedCatalogCars]);
 
   const seatBounds = useMemo(() => {
-    if (!catalogCars.length) {
+    if (!orderedCatalogCars.length) {
       return { min: 0, max: 0 };
     }
-    const seats = catalogCars.map((car) => car.seats);
+    const seats = orderedCatalogCars.map((car) => car.seats);
     return { min: Math.min(...seats), max: Math.max(...seats) };
-  }, [catalogCars]);
+  }, [orderedCatalogCars]);
 
   useEffect(() => {
     if (priceBounds.max > 0) {
@@ -100,7 +108,7 @@ const Voitures = () => {
 
   const filteredCars = useMemo(
     () =>
-      catalogCars.filter((car) => {
+      orderedCatalogCars.filter((car) => {
         const fullName = `${car.brand} ${car.model}`.toLowerCase();
         const matchesSearch = fullName.includes(searchTerm.toLowerCase().trim());
         const matchesPrice =
@@ -114,7 +122,7 @@ const Voitures = () => {
         const matchesBrand = brandFilter === "all" || car.brand === brandFilter;
         return matchesSearch && matchesPrice && matchesSeats && matchesBrand;
       }),
-    [catalogCars, searchTerm, priceRange, seatRange, brandFilter],
+    [orderedCatalogCars, searchTerm, priceRange, seatRange, brandFilter],
   );
 
   const isPriceDefault = priceRange[0] === priceBounds.min && priceRange[1] === priceBounds.max;

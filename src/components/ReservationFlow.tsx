@@ -48,6 +48,16 @@ const extrasCatalog = [
 
 const citySuggestions = ["Agadir", "Marrakech", "Taghazout", "Casablanca", "Essaouira", "Rabat"];
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const addDaysToIso = (rawDate: string, days: number) => {
+  const parsed = new Date(`${rawDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  return new Date(parsed.getTime() + days * DAY_MS).toISOString().split("T")[0];
+};
+
 const steps = [
   { key: "vehicle", title: "Véhicule & période", description: "Choisissez un modèle et vos dates" },
   { key: "profile", title: "Coordonnées", description: "Informations conducteur principal" },
@@ -212,7 +222,7 @@ const ReservationFlow = () => {
     if (diff < 0) {
       return 0;
     }
-    return Math.max(diff, 1);
+    return Math.max(diff, 2);
   }, [form.pickupDate, form.returnDate]);
 
   const extrasTotal = useMemo(
@@ -369,6 +379,11 @@ const ReservationFlow = () => {
         const end = new Date(form.returnDate);
         if (end.getTime() < start.getTime()) {
           nextErrors.returnDate = "La date de retour doit être postérieure à la prise en charge.";
+        } else {
+          const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+          if (diff < 2) {
+            nextErrors.returnDate = "La réservation doit durer au minimum 2 jours.";
+          }
         }
       }
     }
@@ -713,7 +728,7 @@ const ReservationFlow = () => {
                 <label className="text-xs uppercase tracking-[0.4em] text-slate-400">Retour</label>
                 <input
                   type="date"
-                  min={form.pickupDate || todayIso}
+                  min={form.pickupDate ? addDaysToIso(form.pickupDate, 2) : addDaysToIso(todayIso, 2)}
                   value={form.returnDate}
                   onChange={(event) => updateField("returnDate", event.target.value)}
                   className="mt-2 w-full rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-sm"

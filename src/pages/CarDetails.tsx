@@ -38,7 +38,7 @@ const specIconMap: Record<string, LucideIcon> = {
 
 const conciergePerks = [
   { title: "Livraison express", detail: "Aéroport, hôtel ou villa" },
-  { title: "Concierge 24/7", detail: "WhatsApp + téléphone" },
+  { title: "Conciergerie 24/7", detail: "WhatsApp + téléphone" },
   { title: "Couverture premium", detail: "Assurance tous risques" },
 ];
 
@@ -104,6 +104,15 @@ const CarDetails = () => {
   reservationParams.set("carSlug", car.slug);
   const reservationPath = reservationParams.toString() ? `/reservation?${reservationParams.toString()}` : "/reservation";
   const galleryShots = car.gallery ?? [];
+  const detailItems = [
+    { label: "Année", value: car.year ? String(car.year) : "—" },
+    { label: "Kilométrage", value: typeof car.mileage === "number" ? `${car.mileage.toLocaleString("fr-FR")} km` : "—" },
+    { label: "Couleur", value: car.color ?? "—" },
+    { label: "Portes", value: typeof car.doors === "number" ? String(car.doors) : "—" },
+    { label: "Moteur", value: car.engine ?? "—" },
+    { label: "Plaque", value: car.licensePlate ?? "—" },
+    { label: "Lieu", value: car.location ?? "—" },
+  ];
 
   return (
     <div className="min-h-screen bg-[#01030F] text-white">
@@ -199,6 +208,15 @@ const CarDetails = () => {
                 })}
               </div>
 
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {detailItems.map((item) => (
+                  <div key={item.label} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400">{item.label}</p>
+                    <p className="mt-2 text-base font-semibold text-white">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+
               <div className="grid gap-4 text-sm text-slate-300 sm:grid-cols-2">
                 <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
                   <p className="text-xs uppercase tracking-[0.4em]">Livraison</p>
@@ -277,7 +295,7 @@ const CarDetails = () => {
                 className="rounded-full border border-white/15 px-5 py-2 text-xs uppercase tracking-[0.4em] text-slate-300"
                 onClick={() => navigate("/voitures")}
               >
-                Voir tout
+                  Voir tout
               </button>
             </div>
             <div className="mt-6 grid gap-4 md:grid-cols-3">

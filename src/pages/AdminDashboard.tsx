@@ -16,8 +16,10 @@ import {
   Gauge,
   Home,
   LogOut,
+  LayoutGrid,
   Menu,
   MessageSquare,
+  List,
   PlusCircle,
   RefreshCcw,
   Lightbulb,
@@ -26,6 +28,7 @@ import {
   UserPlus,
   Wand2,
   Wrench,
+  X,
   XCircle,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -199,6 +202,14 @@ const parseLocalDate = (rawDate: string) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const addDaysToIso = (rawDate: string, days: number) => {
+  const parsed = parseLocalDate(rawDate);
+  if (!parsed) {
+    return "";
+  }
+  return new Date(parsed.getTime() + days * DAY_MS).toISOString().split("T")[0];
+};
+
 type ReservationRecord = {
   id: number;
   carId: number;
@@ -224,6 +235,10 @@ type AdminNotification = {
 };
 
 type ExportPeriodMode = "all" | "range";
+
+type CarViewMode = "grid" | "list";
+
+type VehicleWizardStep = 1 | 2 | 3;
 
 type QuickReservationForm = {
   carId: string;
@@ -335,6 +350,9 @@ const AdminDashboard = () => {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [reservationProcessing, setReservationProcessing] = useState<number | null>(null);
   const [reservationStatusFilter, setReservationStatusFilter] = useState<string | null>(null);
+  const [carViewMode, setCarViewMode] = useState<CarViewMode>("grid");
+  const [carDetailsOpen, setCarDetailsOpen] = useState(false);
+  const [selectedCar, setSelectedCar] = useState<CarDetail | null>(null);
   const [exportReservationsOpen, setExportReservationsOpen] = useState(false);
   const [exportPeriodMode, setExportPeriodMode] = useState<ExportPeriodMode>("all");
   const [exportStartDate, setExportStartDate] = useState("");
@@ -362,7 +380,7 @@ const AdminDashboard = () => {
   const [quickVehicleOpen, setQuickVehicleOpen] = useState(false);
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
   const [quickReservationLoading, setQuickReservationLoading] = useState(false);
-  const [quickVehicleLoading, setQuickVehicleLoading] = useState(false);
+  const [vehicleWizardStep, setVehicleWizardStep] = useState<VehicleWizardStep>(1);
   const [quickReservationForm, setQuickReservationForm] = useState<QuickReservationForm>({
     carId: "",
     firstName: "",
@@ -410,6 +428,11 @@ const AdminDashboard = () => {
     },
     [],
   );
+
+  const dismissNotification = useCallback((notificationId: string) => {
+    setAdminNotifications((previous) => previous.filter((notification) => notification.id !== notificationId));
+  }, []);
+
   const handleDashboardLogout = useCallback(() => {
     logout();
     navigate("/");
@@ -775,6 +798,11 @@ const AdminDashboard = () => {
     setEditingRemoteId(null);
   };
 
+  const openVehicleWizard = () => {
+    setVehicleWizardStep(1);
+    setQuickVehicleOpen(true);
+  };
+
   const prefillLuxuryTemplate = () => {
     setFormState({
       brand: "Mercedes-Benz",
@@ -799,7 +827,52 @@ const AdminDashboard = () => {
     });
     setEditingSlug(null);
     setEditingRemoteId(null);
+    setVehicleWizardStep(1);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const openCarDetails = (car: CarDetail) => {
+    setSelectedCar(car);
+    setCarDetailsOpen(true);
+  };
+
+  const closeCarDetails = () => {
+    setCarDetailsOpen(false);
+    setSelectedCar(null);
+  };
+
+  const vehicleWizardProgress = (vehicleWizardStep / 3) * 100;
+
+  const validateVehicleStep = (step: VehicleWizardStep) => {
+    if (step === 1) {
+      const required = [quickCarForm.brand, quickCarForm.model, quickCarForm.category];
+      return required.every((value) => value.trim().length > 0);
+    }
+    if (step === 2) {
+      return (
+        quickCarForm.pricePerDay.trim().length > 0 &&
+        quickCarForm.transmission.trim().length > 0 &&
+        quickCarForm.fuel.trim().length > 0 &&
+        quickCarForm.seats.trim().length > 0
+      );
+    }
+    return quickCarForm.image.trim().length > 0;
+  };
+
+  const goToNextVehicleStep = () => {
+    if (!validateVehicleStep(vehicleWizardStep)) {
+      toast({
+        title: "Champs manquants",
+        description: "Complétez les champs de cette étape avant de continuer.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setVehicleWizardStep((current): VehicleWizardStep => Math.min(3, current + 1) as VehicleWizardStep);
+  };
+
+  const goToPreviousVehicleStep = () => {
+    setVehicleWizardStep((current): VehicleWizardStep => Math.max(1, current - 1) as VehicleWizardStep);
   };
 
   const filteredCars = useMemo(() => {
@@ -946,6 +1019,25 @@ const AdminDashboard = () => {
       });
       return;
     }
+    const pickupDate = parseLocalDate(quickReservationForm.pickupDate);
+    const returnDate = parseLocalDate(quickReservationForm.returnDate);
+    if (!pickupDate || !returnDate) {
+      toast({
+        title: "Dates requises",
+        description: "Renseignez une période complète avant de créer la réservation.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const rentalDays = Math.ceil((returnDate.getTime() - pickupDate.getTime()) / DAY_MS);
+    if (rentalDays < 2) {
+      toast({
+        title: "Durée minimale",
+        description: "La réservation doit durer au minimum 2 jours.",
+        variant: "destructive",
+      });
+      return;
+    }
     setQuickReservationLoading(true);
     try {
       await apiClient.post("/reservations", {
@@ -1000,7 +1092,6 @@ const AdminDashboard = () => {
 
   const handleQuickVehicleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setQuickVehicleLoading(true);
     try {
       const payload = buildCarRecord(
         {
@@ -1025,6 +1116,7 @@ const AdminDashboard = () => {
         description: `${payload.brand} ${payload.model} est ajouté à la flotte.`,
       });
       setQuickVehicleOpen(false);
+      setVehicleWizardStep(1);
       setQuickCarForm({
         brand: "",
         model: "",
@@ -1047,8 +1139,6 @@ const AdminDashboard = () => {
         }),
         variant: "destructive",
       });
-    } finally {
-      setQuickVehicleLoading(false);
     }
   };
 
@@ -1230,6 +1320,7 @@ const AdminDashboard = () => {
       whatsappMessage: car.whatsappMessage,
       equipments: car.equipments.join("\n"),
     });
+    setVehicleWizardStep(1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -1629,30 +1720,43 @@ const AdminDashboard = () => {
                     <div className="px-2 py-3 text-sm text-muted-foreground">Aucune nouvelle action pour le moment.</div>
                   ) : (
                     adminNotifications.map((notification) => (
-                      <DropdownMenuItem
+                      <div
                         key={notification.id}
-                        className="flex cursor-default flex-col items-start gap-1 rounded-lg px-2 py-2 text-sm"
+                        className="rounded-lg px-2 py-2"
                       >
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                            notification.tone === "success"
-                              ? "bg-emerald-500/15 text-emerald-300"
-                              : notification.tone === "warning"
-                                ? "bg-amber-500/15 text-amber-300"
-                                : "bg-blue-500/15 text-blue-300"
-                          }`}
-                        >
-                          {notification.tone}
-                        </span>
-                        <span className="text-foreground">{notification.text}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(notification.createdAt).toLocaleTimeString("fr-FR", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                          })}
-                        </span>
-                      </DropdownMenuItem>
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                notification.tone === "success"
+                                  ? "bg-emerald-500/15 text-emerald-300"
+                                  : notification.tone === "warning"
+                                    ? "bg-amber-500/15 text-amber-300"
+                                    : "bg-blue-500/15 text-blue-300"
+                              }`}
+                            >
+                              {notification.tone}
+                            </span>
+                            <p className="mt-1 text-sm text-foreground">{notification.text}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(notification.createdAt).toLocaleTimeString("fr-FR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              })}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => dismissNotification(notification.id)}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition hover:bg-secondary/40 hover:text-foreground"
+                            aria-label="Supprimer la notification"
+                            title="Supprimer"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     ))
                   )}
                 </DropdownMenuContent>
@@ -1970,9 +2074,9 @@ const AdminDashboard = () => {
           </div>
         </section>
 
-        <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[260px,1fr] lg:items-start lg:gap-10">
-          <aside className="hidden">
-            <div className="border-b border-white/5 pb-5">
+        <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[290px,1fr] lg:items-start lg:gap-8">
+          <aside className="hidden lg:flex lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] lg:flex-col lg:overflow-y-auto rounded-[32px] border border-border bg-card p-5 shadow-sm">
+            <div className="border-b border-border pb-5">
               <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Julia Auto Cars</p>
               <p className="text-lg font-display font-semibold text-white">Espace admin</p>
               <p className="text-xs text-slate-400">Pilotage temps réel</p>
@@ -1985,8 +2089,8 @@ const AdminDashboard = () => {
                   onClick={() => switchSection(item.key)}
                   className={`rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${
                     activeSection === item.key
-                      ? "border border-white/20 bg-card/10 text-white shadow-[0_10px_30px_rgba(15,23,42,0.45)]"
-                      : "border border-white/5 bg-transparent text-slate-300 hover:border-white/20 hover:bg-card/5"
+                      ? "border border-primary/30 bg-primary/10 text-white shadow-[0_10px_30px_rgba(15,23,42,0.35)]"
+                      : "border border-border bg-transparent text-slate-300 hover:border-primary/20 hover:bg-secondary/40"
                   }`}
                 >
                   <p>{item.label}</p>
@@ -1994,352 +2098,286 @@ const AdminDashboard = () => {
                 </button>
               ))}
             </nav>
-            <div className="mt-6 rounded-2xl border border-white/10 bg-card/5 p-4 text-xs text-slate-300">
+            <div className="mt-6 rounded-2xl border border-border bg-secondary/30 p-4 text-xs text-slate-300">
               <p className="text-white">Dernière synchronisation</p>
               <p className="text-sm font-semibold text-white">{syncLabel}</p>
               <p className="text-slate-400">Flux flotte & réservations</p>
             </div>
           </aside>
 
-          <section className="flex-1 space-y-10 lg:col-span-2">
+          <section className="flex-1 space-y-8 lg:col-span-2">
             {activeSection === "cars" && (
               <>
-                <section className="grid gap-6 lg:grid-cols-[0.85fr,1.15fr]">
-              <div className="space-y-6">
-                <div className="rounded-[32px] border border-border bg-card p-6 shadow-sm">
-                  <div className="mb-4">
-                    <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Centre opérationnel</p>
-                    <h2 className="text-2xl font-display font-semibold text-foreground">Actions rapides</h2>
-                  </div>
-                  <div className="grid gap-3">
-                    <button
-                      type="button"
-                      onClick={prefillLuxuryTemplate}
-                      className="inline-flex items-center justify-between rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-sm font-semibold text-foreground transition hover:border-primary/40 hover:bg-primary/10"
-                    >
-                      Pré-remplir une fiche Business
-                      <PlusCircle className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={clearForm}
-                      className="inline-flex items-center justify-between rounded-2xl border border-border px-4 py-3 text-sm text-foreground hover:border-primary/40 hover:bg-secondary/40"
-                    >
-                      Nettoyer le formulaire
-                      <Wand2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded-[32px] border border-border bg-card p-6 shadow-sm">
-                  <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Fiches actives</p>
-                      <h2 className="text-2xl font-display font-semibold">Dernières voitures</h2>
-                    </div>
-                    <span className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-                      {cars.length} au total
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {highlightedCars.length === 0 ? (
-                      <p className="text-sm text-slate-400">Ajoutez votre première voiture pour la voir ici.</p>
-                    ) : (
-                      highlightedCars.map((car) => (
+                <section className="grid gap-6 xl:grid-cols-[0.78fr,1.22fr]">
+                  <div className="space-y-6">
+                    <div className="rounded-[32px] border border-border bg-card p-6 shadow-sm">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Fleet studio</p>
+                          <h2 className="mt-2 text-2xl font-display font-semibold text-foreground">Car cards, faster decisions</h2>
+                          <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                            Monitor the fleet from a single board, open any vehicle for full details, and create new listings from a guided modal.
+                          </p>
+                        </div>
                         <button
-                          key={car.id}
                           type="button"
-                          onClick={() => handleEdit(car)}
-                          className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-left text-sm text-foreground transition hover:border-primary/40 hover:bg-primary/10"
+                          onClick={openVehicleWizard}
+                          className="inline-flex shrink-0 items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_18px_40px_rgba(59,130,246,0.35)] transition hover:brightness-110"
                         >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-semibold text-foreground">{car.brand} {car.model}</p>
-                              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{car.slug}</p>
-                            </div>
-                            <p className="text-xs text-muted-foreground">{car.pricePerDay} DH/j</p>
-                          </div>
+                          <PlusCircle className="h-4 w-4" />
+                          Add car
                         </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
+                      </div>
 
-              <form
-                onSubmit={handleSubmit}
-                className="rounded-[32px] border border-border bg-card p-8 shadow-sm"
-              >
-                <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">
-                      {editingSlug ? "Edition" : "Nouveau"}
-                    </p>
-                    <h2 className="text-2xl font-display font-semibold text-foreground">
-                      {editingSlug ? "Mettre à jour" : "Enregistrer"} une voiture
-                    </h2>
-                  </div>
-                  {editingSlug && (
-                    <button
-                      type="button"
-                      className="text-sm text-blue-600 underline"
-                      onClick={clearForm}
-                    >
-                      Annuler l'édition
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid gap-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="space-y-2 text-sm text-foreground">
-                      Marque
-                      <input
-                        className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                        value={formState.brand}
-                        onChange={(event) => setFormState((prev) => ({ ...prev, brand: event.target.value }))}
-                        required
-                      />
-                    </label>
-                    <label className="space-y-2 text-sm text-foreground">
-                      Modèle
-                      <input
-                        className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                        value={formState.model}
-                        onChange={(event) => setFormState((prev) => ({ ...prev, model: event.target.value }))}
-                        required
-                      />
-                    </label>
+                      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-3xl border border-border bg-secondary/40 p-4">
+                          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Total</p>
+                          <p className="mt-2 text-2xl font-semibold text-foreground">{stats.total}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">Vehicles in the connected fleet</p>
+                        </div>
+                        <div className="rounded-3xl border border-border bg-secondary/40 p-4">
+                          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Average price</p>
+                          <p className="mt-2 text-2xl font-semibold text-foreground">{stats.avgPrice}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">DH / day</p>
+                        </div>
+                        <div className="rounded-3xl border border-border bg-secondary/40 p-4">
+                          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Auto share</p>
+                          <p className="mt-2 text-2xl font-semibold text-foreground">{stats.automaticShare}%</p>
+                          <p className="mt-1 text-xs text-muted-foreground">Vehicles with automatic transmission</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <label className="space-y-2 text-sm text-foreground">
-                    Catégorie
-                    <input
-                      className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                      value={formState.category}
-                      onChange={(event) => setFormState((prev) => ({ ...prev, category: event.target.value }))}
-                    />
-                  </label>
+                  <section id="cars-board" className="rounded-[32px] border border-border bg-card p-6 shadow-sm">
+                    <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Inventory</p>
+                        <h2 className="text-2xl font-display font-semibold text-foreground">Fleet overview</h2>
+                        <p className="text-sm text-muted-foreground">Browse the fleet as cards or compact rows.</p>
+                      </div>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <span className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+                          {filteredCars.length} results / {cars.length}
+                        </span>
+                        <div className="inline-flex overflow-hidden rounded-full border border-border bg-secondary/35 p-1">
+                          <button
+                            type="button"
+                            onClick={() => setCarViewMode("grid")}
+                            className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition ${
+                              carViewMode === "grid"
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            <LayoutGrid className="h-3.5 w-3.5" /> Grid
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCarViewMode("list")}
+                            className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition ${
+                              carViewMode === "list"
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            <List className="h-3.5 w-3.5" /> List
+                          </button>
+                        </div>
+                        <input
+                          placeholder="Search by brand, model or category"
+                          className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2 text-sm text-foreground focus:border-primary/40 focus:outline-none sm:w-72"
+                          value={search}
+                          onChange={(event) => setSearch(event.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={openVehicleWizard}
+                          className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:brightness-110"
+                        >
+                          <PlusCircle className="h-4 w-4" /> New car
+                        </button>
+                      </div>
+                    </div>
 
-                  <label className="space-y-2 text-sm text-foreground">
-                    Description courte
-                    <textarea
-                      className="h-28 w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                      value={formState.description}
-                      onChange={(event) => setFormState((prev) => ({ ...prev, description: event.target.value }))}
-                    />
-                  </label>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="space-y-2 text-sm text-foreground">
-                      Prix journalier (DH)
-                      <input
-                        type="number"
-                        min="0"
-                        className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                        value={formState.pricePerDay}
-                        onChange={(event) => setFormState((prev) => ({ ...prev, pricePerDay: event.target.value }))}
-                        required
-                      />
-                    </label>
-                    <label className="space-y-2 text-sm text-foreground">
-                      Image (URL)
-                      <input
-                        type="url"
-                        className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                        value={formState.image}
-                        onChange={(event) => setFormState((prev) => ({ ...prev, image: event.target.value }))}
-                        required
-                      />
-                    </label>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground">
-                    Ajoutez jusqu'à 3 images. Les visuels supplémentaires sont optionnels.
-                  </p>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="space-y-2 text-sm text-foreground">
-                      Image secondaire (URL)
-                      <input
-                        type="url"
-                        placeholder="Optionnel"
-                        className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                        value={formState.imageSecondary}
-                        onChange={(event) =>
-                          setFormState((prev) => ({ ...prev, imageSecondary: event.target.value }))
-                        }
-                      />
-                    </label>
-                    <label className="space-y-2 text-sm text-foreground">
-                      Image 3 (URL)
-                      <input
-                        type="url"
-                        placeholder="Optionnel"
-                        className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                        value={formState.imageThird}
-                        onChange={(event) =>
-                          setFormState((prev) => ({ ...prev, imageThird: event.target.value }))
-                        }
-                      />
-                    </label>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <label className="space-y-2 text-sm text-foreground">
-                      Transmission
-                      <select
-                        className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                        value={formState.transmission}
-                        onChange={(event) => setFormState((prev) => ({ ...prev, transmission: event.target.value }))}
-                      >
-                        <option value="Automatique">Automatique</option>
-                        <option value="Manuelle">Manuelle</option>
-                      </select>
-                    </label>
-                    <label className="space-y-2 text-sm text-foreground">
-                      Carburant
-                      <select
-                        className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                        value={formState.fuel}
-                        onChange={(event) => setFormState((prev) => ({ ...prev, fuel: event.target.value }))}
-                      >
-                        <option value="Diesel">Diesel</option>
-                        <option value="Essence">Essence</option>
-                        <option value="Hybride">Hybride</option>
-                        <option value="Électrique">Électrique</option>
-                      </select>
-                    </label>
-                    <label className="space-y-2 text-sm text-foreground">
-                      Places
-                      <input
-                        type="number"
-                        min="2"
-                        className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                        value={formState.seats}
-                        onChange={(event) => setFormState((prev) => ({ ...prev, seats: event.target.value }))}
-                      />
-                    </label>
-                  </div>
-
-                  <label className="space-y-2 text-sm text-foreground">
-                    Message WhatsApp personnalisé
-                    <input
-                      className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                      value={formState.whatsappMessage}
-                      onChange={(event) => setFormState((prev) => ({ ...prev, whatsappMessage: event.target.value }))}
-                    />
-                  </label>
-
-                  <label className="space-y-2 text-sm text-foreground">
-                    Équipements (un par ligne)
-                    <textarea
-                      className="h-32 w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2.5 text-foreground focus:border-blue-300 focus:outline-none"
-                      value={formState.equipments}
-                      onChange={(event) => setFormState((prev) => ({ ...prev, equipments: event.target.value }))}
-                    />
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={pendingAction}
-                  className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-3 text-lg font-semibold text-primary-foreground shadow-[0_20px_45px_rgba(59,130,246,0.45)] transition hover:brightness-110 disabled:opacity-60"
-                >
-                  <PlusCircle className="h-5 w-5" />
-                  {pendingAction ? "Traitement..." : editingSlug ? "Mettre à jour" : "Enregistrer"}
-                </button>
-              </form>
-            </section>
-
-            <section id="cars-board" className="rounded-[32px] border border-border bg-card p-6 shadow-sm">
-              <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Inventaire</p>
-                  <h2 className="text-2xl font-display font-semibold">Voitures connectées</h2>
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <span className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-                    {filteredCars.length} résultats / {cars.length}
-                  </span>
-                  <input
-                    placeholder="Rechercher un modèle"
-                    className="w-full rounded-2xl border border-border bg-secondary/40 px-4 py-2 text-sm text-foreground focus:border-blue-300 focus:outline-none sm:w-64"
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="text-muted-foreground">
-                      <th className="pb-3 font-semibold">Modèle</th>
-                      <th className="pb-3 font-semibold">Catégorie</th>
-                      <th className="pb-3 font-semibold">Prix</th>
-                      <th className="pb-3 font-semibold">Transmission</th>
-                      <th className="pb-3 font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
                     {loading ? (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-slate-400">
-                          Chargement de la flotte...
-                        </td>
-                      </tr>
+                      <div className="rounded-[28px] border border-dashed border-border bg-secondary/25 p-10 text-center text-sm text-muted-foreground">
+                        Loading the fleet...
+                      </div>
                     ) : filteredCars.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-muted-foreground">
-                          Aucun véhicule ne correspond à votre recherche.
-                        </td>
-                      </tr>
+                      <div className="rounded-[28px] border border-dashed border-border bg-secondary/25 p-10 text-center text-sm text-muted-foreground">
+                        No vehicles match the current search.
+                      </div>
                     ) : (
-                      filteredCars.map((car) => (
-                        <tr key={car.id} className="border-t border-white/5">
-                          <td className="py-3">
-                            <div className="flex items-center gap-3">
-                              <img src={car.image} alt={car.model} className="h-12 w-16 rounded-xl object-cover" />
-                              <div>
-                                <p className="font-semibold">
-                                  {car.brand} {car.model}
-                                </p>
-                                <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{car.slug}</p>
-                              </div>
+                      <div className={carViewMode === "grid" ? "grid gap-4 xl:grid-cols-2" : "space-y-4"}>
+                        {filteredCars.map((car) => {
+                          const connected = car.remoteId != null;
+                          const statusClass = connected
+                            ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                            : "border-amber-400/30 bg-amber-500/10 text-amber-100";
+
+                          return (
+                            <div
+                              key={car.id}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  openCarDetails(car);
+                                }
+                              }}
+                              onClick={() => openCarDetails(car)}
+                              className={`group cursor-pointer rounded-[28px] border border-border bg-secondary/25 transition hover:-translate-y-1 hover:border-primary/30 hover:bg-secondary/45 ${
+                                carViewMode === "grid" ? "p-4" : "p-4 sm:p-5"
+                              }`}
+                            >
+                              {carViewMode === "grid" ? (
+                                <>
+                                  <div className="relative overflow-hidden rounded-[24px] bg-slate-950/70">
+                                    <img
+                                      src={car.image}
+                                      alt={`${car.brand} ${car.model}`}
+                                      className="h-56 w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                                    />
+                                    <div className="absolute inset-x-0 top-0 flex items-start justify-between p-3">
+                                      <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${statusClass}`}>
+                                        {connected ? "Connected" : "Draft"}
+                                      </span>
+                                      <span className="rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-xs text-white/90">
+                                        {car.category}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="mt-4 space-y-4">
+                                    <div>
+                                      <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{car.slug}</p>
+                                      <h3 className="mt-1 text-xl font-semibold text-foreground">
+                                        {car.brand} {car.model}
+                                      </h3>
+                                      <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{car.description}</p>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                                      {car.stats.map((stat) => (
+                                        <div key={stat.label} className="rounded-2xl border border-border bg-card px-3 py-2 text-center">
+                                          <p className="font-semibold text-foreground">{stat.value}</p>
+                                          <p>{stat.label}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div>
+                                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Daily rate</p>
+                                        <p className="text-lg font-semibold text-foreground">{car.pricePerDay} DH</p>
+                                      </div>
+                                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <CheckCircle2 className={`h-4 w-4 ${connected ? "text-emerald-400" : "text-amber-400"}`} />
+                                        {connected ? "Backend synced" : "Needs sync"}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
+                                      <button
+                                        type="button"
+                                        disabled={car.remoteId == null}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleEdit(car);
+                                        }}
+                                        className="rounded-full border border-border px-3 py-2 text-xs font-semibold text-foreground transition hover:border-primary/40 hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        Modify
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={car.remoteId == null}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleDelete(car);
+                                        }}
+                                        className="rounded-full border border-red-400/30 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                                  <div className="relative overflow-hidden rounded-[24px] bg-slate-950/70 lg:w-56">
+                                    <img
+                                      src={car.image}
+                                      alt={`${car.brand} ${car.model}`}
+                                      className="h-48 w-full object-cover transition duration-500 group-hover:scale-[1.03] lg:h-36"
+                                    />
+                                    <span className={`absolute left-3 top-3 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${statusClass}`}>
+                                      {connected ? "Connected" : "Draft"}
+                                    </span>
+                                  </div>
+                                  <div className="flex-1 space-y-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div>
+                                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{car.category}</p>
+                                        <h3 className="mt-1 text-2xl font-semibold text-foreground">
+                                          {car.brand} {car.model}
+                                        </h3>
+                                        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{car.description}</p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Daily rate</p>
+                                        <p className="text-2xl font-semibold text-foreground">{car.pricePerDay} DH</p>
+                                      </div>
+                                    </div>
+                                    <div className="grid gap-2 sm:grid-cols-3">
+                                      {car.stats.map((stat) => (
+                                        <div key={stat.label} className="rounded-2xl border border-border bg-card px-3 py-2">
+                                          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">{stat.label}</p>
+                                          <p className="mt-1 font-semibold text-foreground">{stat.value}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+                                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <CheckCircle2 className={`h-4 w-4 ${connected ? "text-emerald-400" : "text-amber-400"}`} />
+                                        {connected ? "Backend synced" : "Needs sync"}
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          disabled={car.remoteId == null}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            handleEdit(car);
+                                          }}
+                                          className="rounded-full border border-border px-4 py-2 text-xs font-semibold text-foreground transition hover:border-primary/40 hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                          Modify
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={car.remoteId == null}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            handleDelete(car);
+                                          }}
+                                          className="rounded-full border border-red-400/30 px-4 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </td>
-                          <td className="py-3 text-foreground">{car.category}</td>
-                          <td className="py-3 text-foreground">{car.pricePerDay} DH</td>
-                          <td className="py-3 text-foreground">{car.transmission}</td>
-                          <td className="py-3">
-                            <div className="flex items-center gap-3">
-                              <button
-                                type="button"
-                                disabled={car.remoteId == null}
-                                className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs text-foreground hover:border-primary/40 disabled:opacity-50"
-                                title={car.remoteId ? undefined : "Synchronisation requise"}
-                                onClick={() => handleEdit(car)}
-                              >
-                                <Wand2 className="h-3 w-3" /> Modifier
-                              </button>
-                              <button
-                                type="button"
-                                disabled={car.remoteId == null}
-                                className="inline-flex items-center gap-1 rounded-full border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-                                title={car.remoteId ? undefined : "Synchronisation requise"}
-                                onClick={() => handleDelete(car)}
-                              >
-                                <Trash2 className="h-3 w-3" /> Supprimer
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                          );
+                        })}
+                      </div>
                     )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+                  </section>
+                </section>
               </>
             )}
 
@@ -2446,7 +2484,7 @@ const AdminDashboard = () => {
                   <button
                     type="button"
                     onClick={openReservationsExportDialog}
-                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary/40"
+                    className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_10px_30px_rgba(59,130,246,0.25)] transition hover:brightness-110"
                   >
                     <Download className="h-4 w-4" /> Export Excel
                   </button>
@@ -2597,8 +2635,11 @@ const AdminDashboard = () => {
             )}
 
             <Dialog open={exportReservationsOpen} onOpenChange={setExportReservationsOpen}>
-              <DialogContent className="border-border bg-card text-foreground sm:max-w-lg">
+              <DialogContent className="border-border bg-card text-foreground sm:max-w-xl">
                 <DialogHeader>
+                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary shadow-[0_0_0_6px_rgba(59,130,246,0.08)]">
+                    <Download className="h-6 w-6" />
+                  </div>
                   <DialogTitle className="text-2xl font-display">Exporter les réservations</DialogTitle>
                   <DialogDescription className="text-muted-foreground">
                     Choisissez si vous voulez exporter toutes les réservations filtrées ou une période précise.
@@ -2618,6 +2659,9 @@ const AdminDashboard = () => {
                             : "border-border bg-card text-foreground hover:bg-secondary/40"
                         }`}
                       >
+                        <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <List className="h-4 w-4" />
+                        </div>
                         <p className="font-semibold">Toutes les données</p>
                         <p className="text-xs text-muted-foreground">Exporte les réservations actuellement filtrées.</p>
                       </button>
@@ -2630,6 +2674,9 @@ const AdminDashboard = () => {
                             : "border-border bg-card text-foreground hover:bg-secondary/40"
                         }`}
                       >
+                        <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <CalendarClock className="h-4 w-4" />
+                        </div>
                         <p className="font-semibold">Sélectionner des dates</p>
                         <p className="text-xs text-muted-foreground">Filtre par date de départ dans l'intervalle choisi.</p>
                       </button>
@@ -2671,8 +2718,9 @@ const AdminDashboard = () => {
                     <button
                       type="button"
                       onClick={handleExportReservationsExcel}
-                      className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:brightness-110"
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:brightness-110"
                     >
+                      <Download className="h-4 w-4" />
                       Exporter en XLSX
                     </button>
                   </div>
@@ -3028,7 +3076,7 @@ const AdminDashboard = () => {
                   Date retour
                   <input
                     type="date"
-                    min={quickReservationForm.pickupDate || todayIso}
+                    min={quickReservationForm.pickupDate ? addDaysToIso(quickReservationForm.pickupDate, 2) : addDaysToIso(todayIso, 2)}
                     required
                     value={quickReservationForm.returnDate}
                     onChange={(event) =>
@@ -3070,132 +3118,367 @@ const AdminDashboard = () => {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={quickVehicleOpen} onOpenChange={setQuickVehicleOpen}>
-          <DialogContent className="border-white/10 bg-slate-900 text-white sm:max-w-xl">
+        <Sheet
+          open={carDetailsOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              closeCarDetails();
+            }
+          }}
+        >
+          <SheetContent side="right" className="w-full max-w-2xl border-border bg-card text-foreground">
+            {selectedCar && (
+              <div className="flex h-full flex-col">
+                <SheetHeader className="pr-10 text-left">
+                  <SheetTitle className="text-2xl font-display text-foreground">
+                    {selectedCar.brand} {selectedCar.model}
+                  </SheetTitle>
+                  <SheetDescription className="text-muted-foreground">
+                    {selectedCar.category} • {selectedCar.slug}
+                  </SheetDescription>
+                </SheetHeader>
+
+                <div className="mt-6 flex-1 space-y-5 overflow-y-auto pr-1">
+                  <div className="relative overflow-hidden rounded-[28px] border border-border bg-slate-950/70">
+                    <img
+                      src={selectedCar.image}
+                      alt={`${selectedCar.brand} ${selectedCar.model}`}
+                      className="h-64 w-full object-cover"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-transparent p-4 text-white">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-white/70">Daily rate</p>
+                        <p className="text-3xl font-semibold">{selectedCar.pricePerDay} DH</p>
+                      </div>
+                      <span
+                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${
+                          selectedCar.remoteId != null
+                            ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                            : "border-amber-400/30 bg-amber-500/10 text-amber-100"
+                        }`}
+                      >
+                        {selectedCar.remoteId != null ? "Connected" : "Draft"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {selectedCar.stats.map((stat) => (
+                      <div key={stat.label} className="rounded-3xl border border-border bg-secondary/35 p-4">
+                        <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">{stat.label}</p>
+                        <p className="mt-2 text-lg font-semibold text-foreground">{stat.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid gap-4 rounded-[28px] border border-border bg-secondary/25 p-5">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Description</p>
+                      <p className="mt-2 text-sm leading-6 text-foreground">{selectedCar.description}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Highlights</p>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        {selectedCar.highlights.map((highlight) => (
+                          <div key={highlight.title} className="rounded-2xl border border-border bg-card p-3">
+                            <p className="font-semibold text-foreground">{highlight.title}</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{highlight.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Equipments</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {selectedCar.equipments.map((equipment) => (
+                          <span key={equipment} className="rounded-full border border-border bg-card px-3 py-1 text-xs text-foreground">
+                            {equipment}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 rounded-[28px] border border-border bg-secondary/25 p-5 sm:grid-cols-2">
+                    {selectedCar.gallery.slice(0, 2).map((image) => (
+                      <div key={image.id} className="overflow-hidden rounded-2xl border border-border bg-slate-950/70">
+                        <img src={image.image} alt={image.label} className="h-40 w-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-wrap gap-2 border-t border-border pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleEdit(selectedCar);
+                      closeCarDetails();
+                    }}
+                    className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:brightness-110"
+                  >
+                    Modify
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedCar.remoteId == null}
+                    onClick={() => {
+                      handleDelete(selectedCar);
+                      closeCarDetails();
+                    }}
+                    className="inline-flex items-center justify-center rounded-full border border-red-400/30 px-4 py-2 text-sm font-semibold text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )}
+          </SheetContent>
+        </Sheet>
+
+        <Dialog
+          open={quickVehicleOpen}
+          onOpenChange={(open) => {
+            setQuickVehicleOpen(open);
+            if (!open) {
+              setVehicleWizardStep(1);
+            }
+          }}
+        >
+          <DialogContent className="border-border bg-card text-foreground sm:max-w-3xl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-2xl font-display">
-                <PlusCircle className="h-5 w-5 text-cyan-300" />
-                Ajouter un véhicule
+                <PlusCircle className="h-5 w-5 text-primary" />
+                {editingSlug ? "Modifier un véhicule" : "Ajouter un véhicule"}
               </DialogTitle>
-              <DialogDescription className="text-slate-400">
-                Création rapide d'un véhicule dans la flotte connectée.
+              <DialogDescription className="text-muted-foreground">
+                {editingSlug
+                  ? "Affinez les informations du véhicule en conservant le catalogue connecté."
+                  : "Suivez les étapes pour publier une nouvelle voiture dans la flotte."}
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleQuickVehicleSubmit} className="grid gap-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-1 text-xs text-slate-300">
-                  Marque
-                  <input
-                    required
-                    value={quickCarForm.brand}
-                    onChange={(event) => setQuickCarForm((previous) => ({ ...previous, brand: event.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm"
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-slate-300">
-                  Modèle
-                  <input
-                    required
-                    value={quickCarForm.model}
-                    onChange={(event) => setQuickCarForm((previous) => ({ ...previous, model: event.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm"
-                  />
-                </label>
+            <div className="space-y-5">
+              <div className="rounded-3xl border border-border bg-secondary/35 p-4">
+                <div className="mb-3 flex items-center justify-between text-xs uppercase tracking-[0.3em] text-muted-foreground">
+                  <span>Step {vehicleWizardStep} / 3</span>
+                  <span>{vehicleWizardProgress.toFixed(0)}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-card">
+                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${vehicleWizardProgress}%` }} />
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
+                  {[
+                    { step: 1, label: "Basics" },
+                    { step: 2, label: "Specs" },
+                    { step: 3, label: "Media & review" },
+                  ].map((item) => (
+                    <span
+                      key={item.step}
+                      className={`rounded-full border px-3 py-1 ${
+                        vehicleWizardStep === item.step
+                          ? "border-primary/40 bg-primary/10 text-primary"
+                          : "border-border bg-card text-muted-foreground"
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                  ))}
+                </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-1 text-xs text-slate-300">
-                  Catégorie
-                  <input
-                    required
-                    value={quickCarForm.category}
-                    onChange={(event) => setQuickCarForm((previous) => ({ ...previous, category: event.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm"
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-slate-300">
-                  Prix / jour (DH)
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={quickCarForm.pricePerDay}
-                    onChange={(event) =>
-                      setQuickCarForm((previous) => ({ ...previous, pricePerDay: event.target.value }))
-                    }
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm"
-                  />
-                </label>
-              </div>
+              <form onSubmit={handleQuickVehicleSubmit} className="grid gap-5">
+                {vehicleWizardStep === 1 && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="space-y-2 text-sm text-foreground">
+                      Brand
+                      <input
+                        required
+                        value={quickCarForm.brand}
+                        onChange={(event) => setQuickCarForm((previous) => ({ ...previous, brand: event.target.value }))}
+                        className="w-full rounded-2xl border border-border bg-secondary/35 px-4 py-3 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+                      />
+                    </label>
+                    <label className="space-y-2 text-sm text-foreground">
+                      Model
+                      <input
+                        required
+                        value={quickCarForm.model}
+                        onChange={(event) => setQuickCarForm((previous) => ({ ...previous, model: event.target.value }))}
+                        className="w-full rounded-2xl border border-border bg-secondary/35 px-4 py-3 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+                      />
+                    </label>
+                    <label className="space-y-2 text-sm text-foreground sm:col-span-2">
+                      Category
+                      <input
+                        required
+                        value={quickCarForm.category}
+                        onChange={(event) => setQuickCarForm((previous) => ({ ...previous, category: event.target.value }))}
+                        className="w-full rounded-2xl border border-border bg-secondary/35 px-4 py-3 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+                      />
+                    </label>
+                  </div>
+                )}
 
-              <div className="grid gap-4 sm:grid-cols-3">
-                <label className="space-y-1 text-xs text-slate-300">
-                  Transmission
-                  <select
-                    value={quickCarForm.transmission}
-                    onChange={(event) =>
-                      setQuickCarForm((previous) => ({ ...previous, transmission: event.target.value }))
-                    }
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm"
+                {vehicleWizardStep === 2 && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="space-y-2 text-sm text-foreground">
+                      Price / day (DH)
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={quickCarForm.pricePerDay}
+                        onChange={(event) =>
+                          setQuickCarForm((previous) => ({ ...previous, pricePerDay: event.target.value }))
+                        }
+                        className="w-full rounded-2xl border border-border bg-secondary/35 px-4 py-3 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+                      />
+                    </label>
+                    <label className="space-y-2 text-sm text-foreground">
+                      Seats
+                      <input
+                        type="number"
+                        min="2"
+                        required
+                        value={quickCarForm.seats}
+                        onChange={(event) => setQuickCarForm((previous) => ({ ...previous, seats: event.target.value }))}
+                        className="w-full rounded-2xl border border-border bg-secondary/35 px-4 py-3 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+                      />
+                    </label>
+                    <label className="space-y-2 text-sm text-foreground">
+                      Transmission
+                      <select
+                        value={quickCarForm.transmission}
+                        onChange={(event) =>
+                          setQuickCarForm((previous) => ({ ...previous, transmission: event.target.value }))
+                        }
+                        className="w-full rounded-2xl border border-border bg-secondary/35 px-4 py-3 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+                      >
+                        <option value="Automatique">Automatique</option>
+                        <option value="Manuelle">Manuelle</option>
+                      </select>
+                    </label>
+                    <label className="space-y-2 text-sm text-foreground">
+                      Fuel
+                      <select
+                        value={quickCarForm.fuel}
+                        onChange={(event) => setQuickCarForm((previous) => ({ ...previous, fuel: event.target.value }))}
+                        className="w-full rounded-2xl border border-border bg-secondary/35 px-4 py-3 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+                      >
+                        <option value="Diesel">Diesel</option>
+                        <option value="Essence">Essence</option>
+                        <option value="Hybride">Hybride</option>
+                        <option value="Électrique">Électrique</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
+
+                {vehicleWizardStep === 3 && (
+                  <div className="grid gap-4 lg:grid-cols-[1.05fr,0.95fr]">
+                    <div className="space-y-4">
+                      <label className="space-y-2 text-sm text-foreground">
+                        Hero image URL
+                        <input
+                          type="url"
+                          required
+                          value={quickCarForm.image}
+                          onChange={(event) => setQuickCarForm((previous) => ({ ...previous, image: event.target.value }))}
+                          className="w-full rounded-2xl border border-border bg-secondary/35 px-4 py-3 text-sm text-foreground focus:border-primary/40 focus:outline-none"
+                        />
+                      </label>
+                      <div className="rounded-[28px] border border-border bg-secondary/30 p-4">
+                        <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Review</p>
+                        <div className="mt-3 flex items-start justify-between gap-3">
+                          <div>
+                            <h4 className="text-2xl font-semibold text-foreground">
+                              {quickCarForm.brand || "Brand"} {quickCarForm.model || "Model"}
+                            </h4>
+                            <p className="text-sm text-muted-foreground">{quickCarForm.category || "Category"}</p>
+                          </div>
+                          <p className="text-right text-2xl font-semibold text-foreground">
+                            {quickCarForm.pricePerDay || "0"} DH
+                          </p>
+                        </div>
+                        <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
+                          <div className="rounded-2xl border border-border bg-card px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Transmission</p>
+                            <p className="mt-1 font-semibold text-foreground">{quickCarForm.transmission}</p>
+                          </div>
+                          <div className="rounded-2xl border border-border bg-card px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Fuel</p>
+                            <p className="mt-1 font-semibold text-foreground">{quickCarForm.fuel}</p>
+                          </div>
+                          <div className="rounded-2xl border border-border bg-card px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Seats</p>
+                            <p className="mt-1 font-semibold text-foreground">{quickCarForm.seats || "5"}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="overflow-hidden rounded-[28px] border border-border bg-slate-950/70">
+                      <div className="relative h-full min-h-[320px]">
+                        {quickCarForm.image ? (
+                          <img src={quickCarForm.image} alt="Preview" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center p-10 text-center text-sm text-slate-300">
+                            Add an image URL to preview the vehicle cover.
+                          </div>
+                        )}
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 to-transparent p-4 text-white">
+                          <p className="text-xs uppercase tracking-[0.4em] text-white/70">Selected cover</p>
+                          <p className="mt-1 font-semibold">
+                            {quickCarForm.brand || "New"} {quickCarForm.model || "vehicle"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickVehicleOpen(false);
+                      setVehicleWizardStep(1);
+                    }}
+                    className="rounded-2xl border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary/40"
                   >
-                    <option value="Automatique">Automatique</option>
-                    <option value="Manuelle">Manuelle</option>
-                  </select>
-                </label>
-                <label className="space-y-1 text-xs text-slate-300">
-                  Carburant
-                  <select
-                    value={quickCarForm.fuel}
-                    onChange={(event) => setQuickCarForm((previous) => ({ ...previous, fuel: event.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm"
-                  >
-                    <option value="Diesel">Diesel</option>
-                    <option value="Essence">Essence</option>
-                    <option value="Hybride">Hybride</option>
-                    <option value="Électrique">Électrique</option>
-                  </select>
-                </label>
-                <label className="space-y-1 text-xs text-slate-300">
-                  Places
-                  <input
-                    type="number"
-                    min="2"
-                    required
-                    value={quickCarForm.seats}
-                    onChange={(event) => setQuickCarForm((previous) => ({ ...previous, seats: event.target.value }))}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm"
-                  />
-                </label>
-              </div>
-
-              <label className="space-y-1 text-xs text-slate-300">
-                Image (URL)
-                <input
-                  type="url"
-                  required
-                  value={quickCarForm.image}
-                  onChange={(event) => setQuickCarForm((previous) => ({ ...previous, image: event.target.value }))}
-                  className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm"
-                />
-              </label>
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setQuickVehicleOpen(false)}
-                  className="rounded-2xl border border-white/20 px-4 py-2 text-sm hover:bg-card/5"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={quickVehicleLoading}
-                  className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
-                >
-                  {quickVehicleLoading ? "Création..." : "Créer le véhicule"}
-                </button>
-              </div>
-            </form>
+                    Cancel
+                  </button>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    {vehicleWizardStep > 1 && (
+                      <button
+                        type="button"
+                        onClick={goToPreviousVehicleStep}
+                        className="rounded-2xl border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary/40"
+                      >
+                        Previous
+                      </button>
+                    )}
+                    {vehicleWizardStep < 3 ? (
+                      <button
+                        type="button"
+                        onClick={goToNextVehicleStep}
+                        className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:brightness-110"
+                      >
+                        Next step
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={pendingAction}
+                        className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:brightness-110 disabled:opacity-60"
+                      >
+                        {pendingAction ? "Saving..." : editingSlug ? "Update vehicle" : "Create vehicle"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </form>
+            </div>
           </DialogContent>
         </Dialog>
 

@@ -25,6 +25,13 @@ export type CarDetail = {
   equipments: string[];
   highlights: { title: string; description: string; icon: CarHighlightIcon }[];
   whatsappMessage: string;
+  year?: number;
+  mileage?: number;
+  color?: string;
+  doors?: number;
+  engine?: string;
+  licensePlate?: string;
+  location?: string;
 };
 
 export const defaultHighlights = [

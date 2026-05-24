@@ -35,6 +35,13 @@ type ApiCarResponse = {
   whatsappMessage?: string;
   equipments?: string[];
   gallery?: ApiGalleryItem[];
+  year?: number;
+  mileage?: number;
+  color?: string;
+  doors?: number;
+  engine?: string;
+  licensePlate?: string;
+  location?: string;
 };
 
 type ApiCarPayload = Omit<ApiCarResponse, "id">;
@@ -99,6 +106,13 @@ const mapApiCarToCarDetail = (car: ApiCarResponse): CarDetail => {
     highlights: defaultHighlights,
     whatsappMessage:
       car.whatsappMessage ?? `Bonjour, je souhaite réserver la ${car.brand} ${car.model}.`,
+      year: car.year,
+      mileage: car.mileage,
+      color: car.color,
+      doors: car.doors,
+      engine: car.engine,
+      licensePlate: car.licensePlate,
+      location: car.location,
   };
 };
 
@@ -121,6 +135,13 @@ const mapCarDetailToApiPayload = (car: CarDetail): ApiCarPayload => {
     whatsappMessage: car.whatsappMessage,
     equipments: car.equipments,
     gallery: gallery.map((item) => ({ label: item.label, imageUrl: item.image })),
+    year: car.year,
+    mileage: car.mileage,
+    color: car.color,
+    doors: car.doors,
+    engine: car.engine,
+    licensePlate: car.licensePlate,
+    location: car.location,
   };
 };
 

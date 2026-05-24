@@ -49,6 +49,23 @@
     --glass-border: 0 0% 100% / 0.1;
     --neon-glow: 216 100% 53%;
   }
+
+  select {
+    color-scheme: dark;
+  }
+
+  select option,
+  select optgroup {
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+  }
+
+  select option:checked,
+  select option:hover,
+  select option:focus {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
 }
 
 @layer base {
@@ -110,6 +127,31 @@
   .car-card-hover:hover {
     @apply -translate-y-2;
     box-shadow: 0 20px 60px hsla(var(--primary) / 0.2);
+  }
+
+  .modal-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.55) rgba(15, 23, 42, 0.2);
+    scrollbar-gutter: stable;
+  }
+
+  .modal-scrollbar::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .modal-scrollbar::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.2);
+    border-radius: 999px;
+  }
+
+  .modal-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.55);
+    border-radius: 999px;
+    border: 2px solid rgba(15, 23, 42, 0.2);
+  }
+
+  .modal-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(203, 213, 225, 0.7);
   }
 }
 
