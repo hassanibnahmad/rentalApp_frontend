@@ -27,12 +27,12 @@ const FeaturedCars = () => {
 
   return (
     <section id="voitures" className="section-padding bg-[#020617] text-white">
-      <div className="container mx-auto">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="text-center mb-14"
+          className="mb-10 text-center md:mb-14"
         >
           <p className="text-xs uppercase tracking-[0.45em] text-slate-400">Flotte connectée</p>
           <h2 className="text-3xl md:text-5xl font-display font-bold mb-4">
@@ -46,7 +46,7 @@ const FeaturedCars = () => {
         <Carousel className="relative" opts={{ align: "start", loop: true }}>
           <CarouselContent>
             {featuredCars.map((car, i) => (
-              <CarouselItem key={car.slug} className="md:basis-1/2 xl:basis-1/3">
+              <CarouselItem key={car.slug} className="basis-full sm:basis-11/12 md:basis-1/2 xl:basis-1/3">
                 <LuxuryCarCard car={car} index={i} variant="slider" onNavigate={handleNavigate} />
               </CarouselItem>
             ))}
@@ -54,6 +54,16 @@ const FeaturedCars = () => {
           <CarouselPrevious className="hidden md:flex border-white/20 text-white bg-black/40 hover:bg-primary hover:text-primary-foreground" />
           <CarouselNext className="hidden md:flex border-white/20 text-white bg-black/40 hover:bg-primary hover:text-primary-foreground" />
         </Carousel>
+
+        <div className="mt-8 flex justify-center">
+          <button
+            type="button"
+            onClick={() => navigate("/voitures")}
+            className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:border-primary hover:bg-primary/10 hover:text-primary"
+          >
+            Voir toutes les voitures
+          </button>
+        </div>
       </div>
     </section>
   );

@@ -412,6 +412,43 @@ const AdminDashboard = () => {
   });
   const previousReservationsRef = useRef<ReservationRecord[] | null>(null);
 
+  const [headerSearch, setHeaderSearch] = useState("");
+
+  useEffect(() => {
+    const handleHeaderSearch = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail ?? "";
+      const term = String(detail).trim();
+      setHeaderSearch(term);
+      if (!term) return;
+      const matches = reservations.filter((r) => {
+        const hay = `${r.customerFirstName} ${r.customerLastName} ${r.customerEmail} ${r.customerPhone} ${r.notes ?? ""}`.toLowerCase();
+        return hay.includes(term.toLowerCase());
+      });
+      toast({ title: `Recherche: ${term}`, description: `${matches.length} résultat(s) trouvés`, duration: 3000 });
+    };
+    window.addEventListener("admin:search", handleHeaderSearch as EventListener);
+    return () => window.removeEventListener("admin:search", handleHeaderSearch as EventListener);
+  }, [reservations, toast]);
+
+  useEffect(() => {
+    const handleHash = () => {
+      if (window.location.hash === "#notifications") {
+        setUnreadNotifications(0);
+        // try to focus the anchor
+        const el = document.querySelector("[data-notifications-anchor]") as HTMLElement | null;
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.focus();
+        }
+        // clear hash so repeated clicks still work
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    };
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
+
   const pushAdminNotifications = useCallback(
     (entries: Array<Omit<AdminNotification, "id" | "createdAt">>) => {
       if (entries.length === 0) {
@@ -1701,7 +1738,7 @@ const AdminDashboard = () => {
                 }}
               >
                 <DropdownMenuTrigger asChild>
-                  <button
+                    <button data-notifications-anchor
                     type="button"
                     className="relative inline-flex items-center gap-2 rounded-full border border-white/15 bg-card px-4 py-2 text-sm font-semibold text-foreground hover:border-primary/40 hover:bg-primary/10"
                   >

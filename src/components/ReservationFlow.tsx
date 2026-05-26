@@ -139,75 +139,28 @@ const ReservationFlow = () => {
   const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(null);
 
   const resolvedCarFromQuery = useMemo(() => {
-    if (!cars.length) {
-      return null;
-    }
+    if (!cars.length) return null;
     const queryCarId = searchParams.get("carId");
     if (queryCarId) {
       const numeric = Number(queryCarId);
       if (!Number.isNaN(numeric)) {
         const remoteMatch = cars.find((car) => car.remoteId === numeric);
-        if (remoteMatch) {
-          return remoteMatch;
-        }
+        if (remoteMatch) return remoteMatch;
       }
     }
     const querySlug = searchParams.get("carSlug");
     if (querySlug) {
       const slugMatch = cars.find((car) => car.slug === querySlug);
-      if (slugMatch) {
-        return slugMatch;
-      }
+      if (slugMatch) return slugMatch;
     }
     return cars[0] ?? null;
   }, [cars, searchParams]);
 
-  useEffect(() => {
-    if (resolvedCarFromQuery?.remoteId) {
-      setForm((previous) => {
-        if (previous.carRemoteId) {
-          return previous;
-        }
-        return { ...previous, carRemoteId: String(resolvedCarFromQuery.remoteId) };
-      });
-    }
-  }, [resolvedCarFromQuery?.remoteId]);
-
-  useEffect(() => {
-    if (searchParams.get("source") !== "admin") {
-      return;
-    }
-    const firstName = searchParams.get("firstName") ?? "";
-    const lastName = searchParams.get("lastName") ?? "";
-    const email = searchParams.get("email") ?? "";
-    const phone = searchParams.get("phone") ?? "";
-    if (!firstName && !lastName && !email && !phone) {
-      return;
-    }
-    setForm((previous) => ({
-      ...previous,
-      firstName: previous.firstName || firstName,
-      lastName: previous.lastName || lastName,
-      email: previous.email || email,
-      phone: previous.phone || phone,
-    }));
-    setActiveStep((previous) => (previous < 1 ? 1 : previous));
-  }, [searchParams]);
-
-  useEffect(() => {
-    setAvailabilityStatus("idle");
-    setAvailabilityMessage(null);
-  }, [form.carRemoteId, form.pickupDate, form.returnDate]);
-
   const selectedCar = useMemo(() => {
-    if (form.carRemoteId) {
-      const numeric = Number(form.carRemoteId);
-      if (!Number.isNaN(numeric)) {
-        const match = cars.find((car) => car.remoteId === numeric);
-        if (match) {
-          return match;
-        }
-      }
+    const numeric = Number(form.carRemoteId);
+    if (!Number.isNaN(numeric)) {
+      const match = cars.find((car) => car.remoteId === numeric);
+      if (match) return match;
     }
     return resolvedCarFromQuery ?? null;
   }, [form.carRemoteId, cars, resolvedCarFromQuery]);
@@ -490,23 +443,74 @@ const ReservationFlow = () => {
   };
 
   const handleDownloadPdf = () => {
-    if (!reservationSummary || !successData) {
-      return;
-    }
-    const doc = new jsPDF();
+    if (!reservationSummary || !successData) return;
+
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 48;
+    let y = 56;
+
+    // Header
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("Résumé de réservation", 14, 18);
-    doc.setFontSize(13);
-    doc.text(reservationSummary.title, 14, 28);
+    doc.setFontSize(20);
+    doc.text("Résumé de réservation", margin, y);
+    doc.setFontSize(12);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    let cursorY = 38;
-    reservationSummary.lines.forEach((line) => {
-      const wrapped = doc.splitTextToSize(line, 180);
-      doc.text(wrapped, 14, cursorY);
-      cursorY += wrapped.length * 6;
+    doc.setFontSize(10);
+    doc.text("Julia Auto Cars", pageWidth - margin, y, { align: "right" });
+
+    y += 48;
+
+    // Prepare key/value data
+    const extrasLabel = (successData.extras && successData.extras.length)
+      ? successData.extras.join(", ")
+      : (form.extras ? extrasCatalog.map(e => (form.extras[e.id] ? `${e.label} x${form.extras[e.id]}` : null)).filter(Boolean).join(", ") : "Aucun");
+
+    const kv: [string, string][] = [
+      ["Client", `${successData.customerFirstName} ${successData.customerLastName}`],
+      ["Email", successData.customerEmail || "-"],
+      ["Téléphone", successData.customerPhone || "-"],
+      ["Document", form.documentId.trim() || "Non communiqué"],
+      ["Véhicule", summaryCarForSuccess ? `${summaryCarForSuccess.brand} ${summaryCarForSuccess.model}` : `ID ${successData.carId}`],
+      ["Période", `${successData.pickupDate} → ${successData.returnDate}`],
+      ["Trajet", `${successData.pickupCity} → ${successData.returnCity}`],
+      ["Extras", extrasLabel || "Aucun"],
+      ["Notes", successData.notes || form.notes.trim() || "Aucune"],
+      ["Montant estimé", successData.totalAmount ? formatCurrency(Number(successData.totalAmount)) : (estimatedTotal ? formatCurrency(estimatedTotal) : "À confirmer")],
+    ];
+
+    // Table dimensions
+    const boxX = margin;
+    const boxW = pageWidth - margin * 2;
+    const labelW = Math.round(boxW * 0.34);
+    const valueX = boxX + labelW + 12;
+    const rowBaseHeight = 20;
+
+    // Draw box border
+    doc.setDrawColor(200);
+    doc.setLineWidth(0.5);
+    doc.rect(boxX, y - 8, boxW, kv.length * rowBaseHeight + 16);
+
+    // Render rows with wrapping
+    let cursor = y;
+    doc.setFontSize(10);
+    kv.forEach(([label, value]) => {
+      // Label
+      doc.setFont("helvetica", "bold");
+      doc.text(label, boxX + 8, cursor + 10);
+
+      // Value wrapped
+      doc.setFont("helvetica", "normal");
+      const maxWidth = boxW - labelW - 24;
+      const wrapped = doc.splitTextToSize(value, maxWidth);
+      doc.text(wrapped, valueX, cursor + 10);
+
+      // Advance cursor by number of lines
+      const lines = Math.max(1, wrapped.length);
+      cursor += Math.max(rowBaseHeight, lines * 12);
     });
+
+   
     doc.save(`reservation-${successData.id}.pdf`);
   };
 
@@ -637,7 +641,7 @@ const ReservationFlow = () => {
                   onChange={(event) => updateField("carRemoteId", event.target.value)}
                   className="w-full rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-sm text-white"
                 >
-                  <option value="">Sélectionner une voiture synchronisée</option>
+                  <option value="">Sélectionner une voiture</option>
                   {cars.map((car) => (
                     <option
                       key={car.slug}

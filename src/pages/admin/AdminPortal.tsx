@@ -699,7 +699,20 @@ export const AdminShell = ({ children }: { children: ReactNode }) => {
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <input
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSearch(value);
+                    try {
+                      const params = new URLSearchParams(window.location.search);
+                      if (value) params.set("q", value); else params.delete("q");
+                      const next = params.toString() ? `${window.location.pathname}?${params.toString()}` : window.location.pathname;
+                      navigate(next, { replace: true });
+                    } catch {
+                      // ignore
+                    }
+                    // broadcast a simple event so pages can react
+                    window.dispatchEvent(new CustomEvent("admin:search", { detail: value }));
+                  }}
                   placeholder="Rechercher n'importe quoi..."
                   className="h-11 w-full rounded-2xl border border-white/10 bg-white/5 pl-11 pr-4 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-500/40"
                 />
@@ -709,7 +722,9 @@ export const AdminShell = ({ children }: { children: ReactNode }) => {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
+                onClick={() => navigate("/admin/dashboard#notifications")}
                 className="inline-flex h-11 items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 text-sm text-slate-200 transition hover:bg-white/10"
+                title="Notifications"
               >
                 <BellRing className="h-4 w-4" />
                 <span className="hidden sm:inline">Notifications</span>
@@ -950,7 +965,7 @@ export const AdminDashboardPage = () => {
         </SectionShell>
 
         <SectionShell title="État de la flotte" description="Répartition en direct" action={
-          <button type="button" className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/10">
+          <button type="button" onClick={() => navigate('/admin/fleet')} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/10">
             <PackageSearch className="h-4 w-4" />
             Voir la flotte
           </button>
@@ -984,7 +999,7 @@ export const AdminDashboardPage = () => {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-3">
-        <SectionShell title="Réservations à venir" description="File opérationnelle" action={<button className="text-sm text-blue-300 hover:text-blue-200" type="button">Tout voir</button>}>
+        <SectionShell title="Réservations à venir" description="File opérationnelle" action={<button onClick={() => navigate('/admin/reservations')} className="text-sm text-blue-300 hover:text-blue-200" type="button">Tout voir</button>}>
           <div className="space-y-3">
             {analytics.upcomingReservations.length === 0 ? (
               <EmptyState title="Aucune réservation à venir" description="Les nouvelles réservations apparaîtront ici en temps réel." />

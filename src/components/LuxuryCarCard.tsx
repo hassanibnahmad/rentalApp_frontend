@@ -52,7 +52,7 @@ const LuxuryCarCard = ({ car, onNavigate, index = 0, variant = "grid" }: LuxuryC
       }}
     >
       <div className={cardClasses}>
-        <div className="relative h-60 overflow-hidden rounded-t-[30px]">
+        <div className="relative h-52 overflow-hidden rounded-t-[30px] sm:h-56 md:h-60">
           <img
             src={car.image}
             alt={`${car.brand} ${car.model}`}
@@ -68,7 +68,7 @@ const LuxuryCarCard = ({ car, onNavigate, index = 0, variant = "grid" }: LuxuryC
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col justify-between p-6 space-y-6">
+        <div className="flex flex-1 flex-col justify-between space-y-5 p-4 sm:space-y-6 sm:p-6">
           <div className="flex flex-col gap-2">
             <h3 className="text-2xl font-display font-semibold text-white">
               {car.brand} <span className="text-gradient-gold">{car.model}</span>
@@ -76,7 +76,7 @@ const LuxuryCarCard = ({ car, onNavigate, index = 0, variant = "grid" }: LuxuryC
             <p className="text-sm text-slate-300 line-clamp-2">{car.description}</p>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 text-sm text-slate-200">
+          <div className="grid grid-cols-1 gap-3 text-sm text-slate-200 sm:grid-cols-3">
             <div className="rounded-2xl bg-white/5 p-3 text-center">
               <Gauge className="mx-auto mb-1 h-4 w-4 text-primary" />
               <p className="text-xs uppercase tracking-wide text-slate-400">Boîte</p>
@@ -101,7 +101,7 @@ const LuxuryCarCard = ({ car, onNavigate, index = 0, variant = "grid" }: LuxuryC
                 event.stopPropagation();
                 handleNavigate();
               }}
-              className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-white text-black px-5 py-3 font-semibold transition group-hover:bg-primary group-hover:text-primary-foreground"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 font-semibold text-black transition group-hover:bg-primary group-hover:text-primary-foreground"
             >
               Voir les détails <MoveRight className="h-4 w-4" />
             </button>
@@ -110,7 +110,7 @@ const LuxuryCarCard = ({ car, onNavigate, index = 0, variant = "grid" }: LuxuryC
               target="_blank"
               rel="noreferrer"
               onClick={(event) => event.stopPropagation()}
-              className="flex-1 inline-flex items-center justify-center rounded-2xl border border-white/30 px-5 py-3 text-sm font-semibold text-white transition hover:border-primary hover:text-primary"
+              className="inline-flex flex-1 items-center justify-center rounded-2xl border border-white/30 px-5 py-3 text-sm font-semibold text-white transition hover:border-primary hover:text-primary"
             >
               Discuter WhatsApp
             </a>
