@@ -218,6 +218,7 @@ type ReservationRecord = {
   customerLastName: string;
   customerEmail: string;
   customerPhone: string;
+  documentId: string;
   pickupCity: string;
   pickupDate: string;
   returnCity: string;
@@ -377,6 +378,7 @@ const AdminDashboard = () => {
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
   const [revenueWindow, setRevenueWindow] = useState<7 | 30>(7);
   const [quickReservationOpen, setQuickReservationOpen] = useState(false);
+  const [editingReservationId, setEditingReservationId] = useState<number | null>(null);
   const [quickVehicleOpen, setQuickVehicleOpen] = useState(false);
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
   const [quickReservationLoading, setQuickReservationLoading] = useState(false);
@@ -1077,7 +1079,7 @@ const AdminDashboard = () => {
     }
     setQuickReservationLoading(true);
     try {
-      await apiClient.post("/reservations", {
+      const payload = {
         carId: Number(quickReservationForm.carId),
         firstName: quickReservationForm.firstName.trim(),
         lastName: quickReservationForm.lastName.trim(),
@@ -1090,12 +1092,24 @@ const AdminDashboard = () => {
         returnDate: quickReservationForm.returnDate,
         notes: quickReservationForm.notes.trim() || undefined,
         extras: [],
-      });
-      toast({
-        title: "Réservation créée",
-        description: "La nouvelle réservation a été ajoutée avec succès.",
-      });
+      };
+
+      if (editingReservationId) {
+        await apiClient.put(`/reservations/${editingReservationId}`, payload);
+        toast({
+          title: "Réservation mise à jour",
+          description: "Les modifications ont été enregistrées avec succès.",
+        });
+      } else {
+        await apiClient.post("/reservations", payload);
+        toast({
+          title: "Réservation créée",
+          description: "La nouvelle réservation a été ajoutée avec succès.",
+        });
+      }
+
       setQuickReservationOpen(false);
+      setEditingReservationId(null);
       setQuickReservationForm({
         carId: "",
         firstName: "",
@@ -1407,6 +1421,49 @@ const AdminDashboard = () => {
     } finally {
       setReservationProcessing(null);
     }
+  };
+
+  const openCreateReservationDialog = () => {
+    setEditingReservationId(null);
+    setQuickReservationForm({
+      carId: "",
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: "",
+      documentId: "",
+      pickupCity: "Agadir",
+      pickupDate: "",
+      returnCity: "Agadir",
+      returnDate: "",
+      notes: "",
+    });
+    setQuickReservationOpen(true);
+  };
+
+  const openEditReservationDialog = (reservation: ReservationRecord) => {
+    setEditingReservationId(reservation.id);
+    setQuickReservationForm({
+      carId: String(reservation.carId),
+      firstName: reservation.customerFirstName,
+      lastName: reservation.customerLastName,
+      email: reservation.customerEmail,
+      phone: reservation.customerPhone,
+      documentId: reservation.documentId ?? "",
+      pickupCity: reservation.pickupCity,
+      pickupDate: reservation.pickupDate,
+      returnCity: reservation.returnCity,
+      returnDate: reservation.returnDate,
+      notes: reservation.notes ?? "",
+    });
+    setDetailsOpen(false);
+    setSelectedReservation(null);
+    setQuickReservationOpen(true);
+  };
+
+  const closeReservationDialog = () => {
+    setQuickReservationOpen(false);
+    setEditingReservationId(null);
   };
 
   const handleDeleteReservation = (reservation: ReservationRecord) => {
@@ -2488,12 +2545,19 @@ const AdminDashboard = () => {
                   <h2 className="text-2xl font-display font-semibold">Demandes synchronisées</h2>
                   <p className="text-sm text-slate-400">{reservationStats.upcoming} départs à venir</p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid w-full gap-2 sm:grid-cols-2 lg:flex lg:w-auto lg:flex-wrap lg:items-center">
+                  <button
+                    type="button"
+                    onClick={openCreateReservationDialog}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-primary/30 bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_10px_30px_rgba(59,130,246,0.25)] transition hover:brightness-110 sm:w-auto"
+                  >
+                    <CalendarPlus className="h-4 w-4" /> Ajouter
+                  </button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
-                        className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary/40"
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary/40 sm:w-auto"
                       >
                         <Filter className="h-4 w-4" />
                         {reservationStatusFilter ? reservationStatusFilter : "Tous les statuts"}
@@ -2521,7 +2585,7 @@ const AdminDashboard = () => {
                   <button
                     type="button"
                     onClick={openReservationsExportDialog}
-                    className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_10px_30px_rgba(59,130,246,0.25)] transition hover:brightness-110"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-primary/30 bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-[0_10px_30px_rgba(59,130,246,0.25)] transition hover:brightness-110 sm:w-auto"
                   >
                     <Download className="h-4 w-4" /> Export Excel
                   </button>
@@ -2530,7 +2594,7 @@ const AdminDashboard = () => {
                     onClick={() => {
                       void fetchReservations();
                     }}
-                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary/40"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary/40 sm:w-auto"
                   >
                     <CalendarClock className="h-4 w-4" /> Rafraîchir
                   </button>
@@ -2645,18 +2709,26 @@ const AdminDashboard = () => {
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
                                     disabled={isProcessing}
+                                    className="gap-2 text-blue-600 focus:bg-blue-50 focus:text-blue-700"
+                                    onSelect={() => handleViewReservation(reservation)}
+                                  >
+                                    <MessageSquare className="h-3.5 w-3.5" /> Détails
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    disabled={isProcessing}
+                                    className="gap-2 text-foreground focus:bg-secondary/40"
+                                    onSelect={() => openEditReservationDialog(reservation)}
+                                  >
+                                    <PlusCircle className="h-3.5 w-3.5" /> Modifier
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    disabled={isProcessing}
                                     className="gap-2 text-red-600 focus:bg-red-50 focus:text-red-700"
                                     onSelect={() => handleDeleteReservation(reservation)}
                                   >
                                     <Trash2 className="h-3.5 w-3.5" /> Supprimer
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator className="bg-slate-200" />
-                                  <DropdownMenuItem
-                                    className="gap-2 text-foreground focus:bg-secondary/40"
-                                    onSelect={() => handleViewReservation(reservation)}
-                                  >
-                                    <MessageSquare className="h-3.5 w-3.5" /> Détails
-                                  </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </td>
@@ -2973,15 +3045,26 @@ const AdminDashboard = () => {
           </SheetContent>
         </Sheet>
 
-        <Dialog open={quickReservationOpen} onOpenChange={setQuickReservationOpen}>
+        <Dialog
+          open={quickReservationOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setQuickReservationOpen(true);
+            } else {
+              closeReservationDialog();
+            }
+          }}
+        >
           <DialogContent className="border-white/10 bg-slate-900 text-white sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-2xl font-display">
                 <CalendarPlus className="h-5 w-5 text-cyan-300" />
-                Ajouter une réservation
+                {editingReservationId ? "Modifier la réservation" : "Ajouter une réservation"}
               </DialogTitle>
               <DialogDescription className="text-slate-400">
-                Créez une réservation en un seul formulaire sans quitter le dashboard.
+                {editingReservationId
+                  ? "Mettez à jour la réservation sélectionnée sans quitter le dashboard."
+                  : "Créez une réservation en un seul formulaire sans quitter le dashboard."}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleQuickReservationSubmit} className="grid gap-4">
@@ -3138,7 +3221,7 @@ const AdminDashboard = () => {
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setQuickReservationOpen(false)}
+                  onClick={closeReservationDialog}
                   className="rounded-2xl border border-white/20 px-4 py-2 text-sm hover:bg-card/5"
                 >
                   Annuler
@@ -3148,7 +3231,13 @@ const AdminDashboard = () => {
                   disabled={quickReservationLoading}
                   className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
                 >
-                  {quickReservationLoading ? "Création..." : "Créer la réservation"}
+                  {quickReservationLoading
+                    ? editingReservationId
+                      ? "Mise à jour..."
+                      : "Création..."
+                    : editingReservationId
+                      ? "Mettre à jour la réservation"
+                      : "Créer la réservation"}
                 </button>
               </div>
             </form>
@@ -3653,6 +3742,7 @@ const AdminDashboard = () => {
                     {selectedReservation.customerFirstName} {selectedReservation.customerLastName}
                   </p>
                   <p className="text-slate-300">{selectedReservation.customerPhone}</p>
+                  <p className="text-slate-400">Document: {selectedReservation.documentId}</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 p-4">
                   <p className="mb-1 text-xs uppercase tracking-[0.4em] text-muted-foreground">Trajet</p>
@@ -3702,6 +3792,15 @@ const AdminDashboard = () => {
                 <div className="flex items-center justify-between rounded-2xl border border-white/10 p-4">
                   <p className="text-xs uppercase tracking-[0.4em] text-slate-400">Total estimé</p>
                   <p className="text-2xl font-bold">{formatCurrency(getDisplayTotalAmount(selectedReservation))} DH</p>
+                </div>
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => openEditReservationDialog(selectedReservation)}
+                    className="rounded-2xl border border-primary/30 bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+                  >
+                    Modifier la réservation
+                  </button>
                 </div>
               </div>
             </DialogContent>

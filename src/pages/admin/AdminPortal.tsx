@@ -56,6 +56,7 @@ type ReservationRecord = {
   customerLastName: string;
   customerEmail: string;
   customerPhone: string;
+  documentId?: string | null;
   pickupCity: string;
   pickupDate: string;
   returnCity: string;
@@ -63,6 +64,21 @@ type ReservationRecord = {
   totalAmount: number;
   extras: string[];
   notes?: string | null;
+};
+
+type QuickReservationForm = {
+  carId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  documentId: string;
+  pickupCity: string;
+  pickupDate: string;
+  returnCity: string;
+  returnDate: string;
+  notes: string;
+  extras?: Record<string, number>;
 };
 
 type AdminRouteKey =
@@ -165,6 +181,38 @@ const formatDateTime = (raw: string) => {
 const formatRate = (value: number) => `${Math.max(0, Math.min(100, Math.round(value)))}%`;
 
 const normalize = (value: string) => value.trim().toLowerCase();
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const todayIso = new Date().toISOString().split("T")[0];
+
+const extrasCatalog = [
+  { id: "gps", label: "GPS premium", unitPrice: 50 },
+  { id: "child-seat", label: "Siège bébé", unitPrice: 80 },
+  { id: "wifi", label: "Wifi embarqué", unitPrice: 120 },
+  { id: "chauffeur", label: "Chauffeur dédié", unitPrice: 400 },
+] as const;
+
+const extrasTemplate = extrasCatalog.reduce<Record<string, number>>((acc, extra) => {
+  acc[extra.id] = 0;
+  return acc;
+}, {});
+
+const parseLocalDate = (rawDate: string) => {
+  if (!rawDate) {
+    return null;
+  }
+  const parsed = new Date(`${rawDate}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const addDaysToIso = (rawDate: string, days: number) => {
+  const parsed = parseLocalDate(rawDate);
+  if (!parsed) {
+    return "";
+  }
+  return new Date(parsed.getTime() + days * DAY_MS).toISOString().split("T")[0];
+};
 
 const sortByDate = <T,>(items: T[], getDate: (item: T) => string, direction: SortDirection) =>
   [...items].sort((left, right) => {
@@ -501,6 +549,8 @@ const SortDropdown = ({
           ))}
         </div>
       )}
+
+      
     </div>
   );
 };
@@ -1120,6 +1170,7 @@ export const AdminFleetPage = () => {
   const [wizardStep, setWizardStep] = useState<FleetWizardStep>(1);
   const [form, setForm] = useState<FleetCarForm>(() => createEmptyFleetForm());
   const [busy, setBusy] = useState(false);
+  const [pendingDeleteCar, setPendingDeleteCar] = useState<CarDetail | null>(null);
 
   const filteredCars = useMemo(() => {
     return cars.filter((car) => {
@@ -1194,6 +1245,18 @@ export const AdminFleetPage = () => {
     }
   };
 
+  const openDeleteCarDialog = (car: CarDetail) => {
+    setPendingDeleteCar(car);
+  };
+
+  const confirmDeleteCar = async () => {
+    if (!pendingDeleteCar) {
+      return;
+    }
+    await handleDelete(pendingDeleteCar);
+    setPendingDeleteCar(null);
+  };
+
   return (
     <div className="space-y-5">
       <SectionShell
@@ -1266,7 +1329,7 @@ export const AdminFleetPage = () => {
                         <td className="px-4 py-4">
                           <div className="flex flex-wrap gap-2">
                             <button type="button" onClick={() => openEdit(car)} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10">Modifier</button>
-                            <button type="button" disabled={busy} onClick={() => void handleDelete(car)} className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 transition hover:bg-rose-500/20">Supprimer</button>
+                            <button type="button" disabled={busy} onClick={() => openDeleteCarDialog(car)} className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 transition hover:bg-rose-500/20">Supprimer</button>
                           </div>
                         </td>
                       </tr>
@@ -1529,6 +1592,45 @@ export const AdminFleetPage = () => {
           </form>
         </ModalShell>
       ) : null}
+
+      {pendingDeleteCar && (
+        <ModalShell
+          title="Confirmer la suppression"
+          description={`${pendingDeleteCar.brand} ${pendingDeleteCar.model}`}
+          onClose={() => setPendingDeleteCar(null)}
+        >
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+              Supprimer ce véhicule est irréversible. La voiture sera retirée de la flotte et ne pourra plus être réservée.
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <DetailCard icon={CarFront} label="Voiture" value={`${pendingDeleteCar.brand} ${pendingDeleteCar.model}`} subvalue={pendingDeleteCar.category} />
+              <DetailCard icon={CircleDollarSign} label="Prix / jour" value={formatCurrency(pendingDeleteCar.pricePerDay)} subvalue="Tarif actuel" />
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteCar(null)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200 hover:bg-white/10"
+              >
+                <XCircle className="h-4 w-4" />
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void confirmDeleteCar()}
+                className="inline-flex items-center gap-2 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                Supprimer définitivement
+              </button>
+            </div>
+          </div>
+        </ModalShell>
+      )}
     </div>
   );
 };
@@ -1541,11 +1643,43 @@ export const AdminReservationsPage = () => {
   const [reservationSort, setReservationSort] = useState<SortDirection>("newest");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [createReservationOpen, setCreateReservationOpen] = useState(false);
+  const [createReservationLoading, setCreateReservationLoading] = useState(false);
+  const [createReservationForm, setCreateReservationForm] = useState<QuickReservationForm>({
+    carId: "",
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    documentId: "",
+    pickupCity: "Agadir",
+    pickupDate: "",
+    returnCity: "Agadir",
+    returnDate: "",
+    notes: "",
+    extras: { ...extrasTemplate },
+  });
   const [exportReservationsOpen, setExportReservationsOpen] = useState(false);
   const [exportPeriodMode, setExportPeriodMode] = useState<"all" | "range">("all");
   const [exportStartDate, setExportStartDate] = useState("");
   const [exportEndDate, setExportEndDate] = useState("");
   const [selectedReservation, setSelectedReservation] = useState<ReservationRecord | null>(null);
+  const [editReservationOpen, setEditReservationOpen] = useState(false);
+  const [editReservationLoading, setEditReservationLoading] = useState(false);
+  const [editReservationForm, setEditReservationForm] = useState<QuickReservationForm & { id?: number }>({
+    carId: "",
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    documentId: "",
+    pickupCity: "Agadir",
+    pickupDate: "",
+    returnCity: "Agadir",
+    returnDate: "",
+    notes: "",
+    extras: { ...extrasTemplate },
+  });
   const [pendingDeleteReservation, setPendingDeleteReservation] = useState<ReservationRecord | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
@@ -1571,6 +1705,149 @@ export const AdminReservationsPage = () => {
     }
     return cars.find((car) => car.remoteId === selectedReservation.carId) ?? null;
   }, [cars, selectedReservation]);
+
+  const editSelectedCar = useMemo(() => {
+    if (!editReservationForm.carId) {
+      return null;
+    }
+    const numericCarId = Number(editReservationForm.carId);
+    if (Number.isNaN(numericCarId)) {
+      return null;
+    }
+    return cars.find((car) => car.remoteId === numericCarId) ?? null;
+  }, [cars, editReservationForm.carId]);
+
+  const openCreateReservationDialog = () => {
+    setCreateReservationForm({
+      carId: "",
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: "",
+      documentId: "",
+      pickupCity: "Agadir",
+      pickupDate: "",
+      returnCity: "Agadir",
+      returnDate: "",
+      notes: "",
+      extras: { ...extrasTemplate },
+    });
+    setCreateReservationOpen(true);
+  };
+
+  const submitCreateReservation = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!createReservationForm.carId) {
+      toast({ title: "Véhicule requis", description: "Choisissez un véhicule avant de créer la réservation.", variant: "destructive" });
+      return;
+    }
+    const pickupDate = parseLocalDate(createReservationForm.pickupDate);
+    const returnDate = parseLocalDate(createReservationForm.returnDate);
+    if (!pickupDate || !returnDate) {
+      toast({ title: "Dates requises", description: "Renseignez une période complète.", variant: "destructive" });
+      return;
+    }
+    const rentalDays = Math.ceil((returnDate.getTime() - pickupDate.getTime()) / DAY_MS);
+    if (rentalDays < 2) {
+      toast({ title: "Durée minimale", description: "La réservation doit durer au minimum 2 jours.", variant: "destructive" });
+      return;
+    }
+
+    // verify availability before creating
+    try {
+      const carIdNum = Number(createReservationForm.carId);
+      const { data: availability } = await apiClient.get<boolean>("/availability", {
+        params: { carId: carIdNum, start: createReservationForm.pickupDate, end: createReservationForm.returnDate },
+      });
+      if (!availability) {
+        toast({ title: "Véhicule indisponible", description: "Le véhicule est déjà réservé sur ces dates.", variant: "destructive" });
+        return;
+      }
+    } catch (err) {
+      // availability check failed — warn but allow admin to retry or proceed
+      toast({ title: "Vérification indisponible", description: "Impossible de vérifier la disponibilité pour l'instant. Réessayez.", variant: "destructive" });
+      return;
+    }
+
+    setCreateReservationLoading(true);
+    try {
+      await apiClient.post("/reservations", {
+        carId: Number(createReservationForm.carId),
+        firstName: createReservationForm.firstName.trim(),
+        lastName: createReservationForm.lastName.trim(),
+        email: createReservationForm.email.trim().toLowerCase(),
+        phone: createReservationForm.phone.trim(),
+        documentId: createReservationForm.documentId.trim(),
+        pickupCity: createReservationForm.pickupCity.trim(),
+        pickupDate: createReservationForm.pickupDate,
+        returnCity: createReservationForm.returnCity.trim(),
+        returnDate: createReservationForm.returnDate,
+        notes: createReservationForm.notes.trim() || undefined,
+        extras: extrasCatalog
+          .filter((extra) => (createReservationForm.extras?.[extra.id] ?? 0) > 0)
+          .map((extra) => ({ label: extra.label, quantity: createReservationForm.extras?.[extra.id] ?? 0, unitPrice: extra.unitPrice })),
+      });
+      toast({ title: "Réservation créée", description: "La nouvelle réservation a été ajoutée avec succès." });
+      setCreateReservationOpen(false);
+      await refresh();
+    } catch (error) {
+      toast({ title: "Création impossible", description: resolveFriendlyError(error, { defaultMessage: "Impossible de créer la réservation." }), variant: "destructive" });
+    } finally {
+      setCreateReservationLoading(false);
+    }
+  };
+
+  const updateCreateExtra = (id: string, quantity: number) => {
+    setCreateReservationForm((previous) => ({
+      ...previous,
+      extras: { ...(previous.extras ?? {}), [id]: Math.max(0, Math.floor(quantity)) },
+    }));
+  };
+
+  const selectedCarForCreate = useMemo(() => {
+    if (!createReservationForm.carId) return null;
+    const numeric = Number(createReservationForm.carId);
+    if (Number.isNaN(numeric)) return null;
+    return cars.find((c) => c.remoteId === numeric) ?? null;
+  }, [cars, createReservationForm.carId]);
+
+  const createRentalDays = useMemo(() => {
+    const start = parseLocalDate(createReservationForm.pickupDate);
+    const end = parseLocalDate(createReservationForm.returnDate);
+    if (!start || !end) return 0;
+    const diff = Math.ceil((end.getTime() - start.getTime()) / DAY_MS);
+    if (diff < 0) return 0;
+    return Math.max(2, diff);
+  }, [createReservationForm.pickupDate, createReservationForm.returnDate]);
+
+  const createExtrasTotal = useMemo(() => {
+    return extrasCatalog.reduce((sum, extra) => sum + ((createReservationForm.extras?.[extra.id] ?? 0) * extra.unitPrice), 0);
+  }, [createReservationForm.extras]);
+
+  const createRentalTotal = useMemo(() => {
+    return selectedCarForCreate ? createRentalDays * (selectedCarForCreate.pricePerDay ?? 0) : 0;
+  }, [selectedCarForCreate, createRentalDays]);
+
+  const createEstimatedTotal = createRentalTotal + createExtrasTotal;
+
+  const editRentalDays = useMemo(() => {
+    const start = parseLocalDate(editReservationForm.pickupDate);
+    const end = parseLocalDate(editReservationForm.returnDate);
+    if (!start || !end) return 0;
+    const diff = Math.ceil((end.getTime() - start.getTime()) / DAY_MS);
+    if (diff < 0) return 0;
+    return Math.max(2, diff);
+  }, [editReservationForm.pickupDate, editReservationForm.returnDate]);
+
+  const editExtrasTotal = useMemo(() => {
+    return extrasCatalog.reduce((sum, extra) => sum + ((editReservationForm.extras?.[extra.id] ?? 0) * extra.unitPrice), 0);
+  }, [editReservationForm.extras]);
+
+  const editRentalTotal = useMemo(() => {
+    return editSelectedCar ? editRentalDays * (editSelectedCar.pricePerDay ?? 0) : 0;
+  }, [editSelectedCar, editRentalDays]);
+
+  const editEstimatedTotal = editRentalTotal + editExtrasTotal;
 
   const updateReservationStatus = async (reservationId: number, action: "confirm" | "cancel") => {
     setBusyId(reservationId);
@@ -1667,6 +1944,14 @@ export const AdminReservationsPage = () => {
     <div className="space-y-5">
       <SectionShell title="Réservations" description="File, filtres et actions">
         <div className="grid gap-3 md:grid-cols-[1.1fr,0.9fr,0.9fr,auto] md:items-end">
+          <button
+            type="button"
+            onClick={openCreateReservationDialog}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-blue-500/30 bg-blue-500 px-4 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(59,130,246,0.22)] transition hover:brightness-110 md:col-start-4 md:row-start-1"
+          >
+            <Plus className="h-4 w-4" />
+            Ajouter
+          </button>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-100 outline-none">
             <option value="all">Tous les statuts</option>
             <option value="PENDING_PAYMENT">En attente</option>
@@ -1675,7 +1960,7 @@ export const AdminReservationsPage = () => {
           </select>
           <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-100 outline-none" />
           <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-slate-100 outline-none" />
-          <div className="flex items-center gap-2 justify-end">
+          <div className="flex items-center gap-2 justify-end md:col-span-4">
             <button
               type="button"
               onClick={() => setExportReservationsOpen(true)}
@@ -1751,6 +2036,140 @@ export const AdminReservationsPage = () => {
           </div>
         </div>
       </SectionShell>
+
+      {createReservationOpen && (
+        <ModalShell title="Ajouter une réservation" description="Créez une réservation directement depuis la page réservations." onClose={() => setCreateReservationOpen(false)}>
+          <form onSubmit={submitCreateReservation} className="grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-xs text-slate-300">
+                Véhicule
+                <select
+                  required
+                  value={createReservationForm.carId}
+                  onChange={(event) => setCreateReservationForm((previous) => ({ ...previous, carId: event.target.value }))}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm"
+                >
+                  <option value="">Sélectionner</option>
+                  {cars.filter((car) => car.remoteId != null).map((car) => (
+                    <option key={car.id} value={String(car.remoteId)}>{car.brand} {car.model}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-xs text-slate-300">
+                CIN / Passeport
+                <input
+                  required
+                  value={createReservationForm.documentId}
+                  onChange={(event) => setCreateReservationForm((previous) => ({ ...previous, documentId: event.target.value }))}
+                  placeholder="Ex. AA123456 ou P1234567"
+                  className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm"
+                />
+                <p className="text-[11px] text-slate-500">Saisissez le numéro du document d’identité du client.</p>
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-xs text-slate-300">
+                Prénom
+                <input required value={createReservationForm.firstName} onChange={(event) => setCreateReservationForm((previous) => ({ ...previous, firstName: event.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+              <label className="space-y-1 text-xs text-slate-300">
+                Nom
+                <input required value={createReservationForm.lastName} onChange={(event) => setCreateReservationForm((previous) => ({ ...previous, lastName: event.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-xs text-slate-300">
+                Email
+                <input type="email" required value={createReservationForm.email} onChange={(event) => setCreateReservationForm((previous) => ({ ...previous, email: event.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+              <label className="space-y-1 text-xs text-slate-300">
+                Téléphone
+                <input required value={createReservationForm.phone} onChange={(event) => setCreateReservationForm((previous) => ({ ...previous, phone: event.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-xs text-slate-300">
+                Ville départ
+                <input required value={createReservationForm.pickupCity} onChange={(event) => setCreateReservationForm((previous) => ({ ...previous, pickupCity: event.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+              <label className="space-y-1 text-xs text-slate-300">
+                Ville retour
+                <input required value={createReservationForm.returnCity} onChange={(event) => setCreateReservationForm((previous) => ({ ...previous, returnCity: event.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-xs text-slate-300">
+                Date départ
+                <input type="date" min={todayIso} required value={createReservationForm.pickupDate} onChange={(event) => setCreateReservationForm((previous) => ({ ...previous, pickupDate: event.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+              <label className="space-y-1 text-xs text-slate-300">
+                Date retour
+                <input type="date" min={createReservationForm.pickupDate ? addDaysToIso(createReservationForm.pickupDate, 2) : addDaysToIso(todayIso, 2)} required value={createReservationForm.returnDate} onChange={(event) => setCreateReservationForm((previous) => ({ ...previous, returnDate: event.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+            </div>
+
+            <label className="space-y-1 text-xs text-slate-300">
+              Notes
+              <textarea value={createReservationForm.notes} onChange={(event) => setCreateReservationForm((previous) => ({ ...previous, notes: event.target.value }))} className="h-20 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+            </label>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3">
+              <p className="text-xs font-medium text-slate-100">Extras</p>
+              <p className="mt-1 text-xs text-slate-400">Ajoutez des options pour cette réservation (quantité et tarif affichés).</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {extrasCatalog.map((extra) => (
+                  <div key={extra.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={(createReservationForm.extras?.[extra.id] ?? 0) > 0}
+                        onChange={(e) => updateCreateExtra(extra.id, e.target.checked ? 1 : 0)}
+                        className="h-4 w-4"
+                      />
+                    </label>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-slate-100">{extra.label}</div>
+                        <div className="text-xs text-slate-400">{formatCurrency(extra.unitPrice)}</div>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          value={(createReservationForm.extras?.[extra.id] ?? 0)}
+                          onChange={(e) => updateCreateExtra(extra.id, Number(e.target.value || 0))}
+                          className="w-20 rounded-2xl border border-white/10 bg-slate-950/60 px-2 py-1 text-sm text-slate-100"
+                        />
+                        <span className="text-xs text-slate-400">unités</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+              <div className="mr-auto flex items-center gap-4">
+                <div className="text-xs text-slate-400">Jours: <span className="text-slate-100">{createRentalDays}</span></div>
+                <div className="text-xs text-slate-400">Taux/jour: <span className="text-slate-100">{selectedCarForCreate ? formatCurrency(selectedCarForCreate.pricePerDay) : "—"}</span></div>
+                <div className="text-xs text-slate-400">Extras: <span className="text-slate-100">{formatCurrency(createExtrasTotal)}</span></div>
+                <div className="text-sm font-semibold text-slate-50">Total estimé: <span className="text-blue-300">{formatCurrency(createEstimatedTotal)}</span></div>
+              </div>
+            <div className="flex justify-end gap-2">
+        
+              <button type="button" onClick={() => setCreateReservationOpen(false)} className="rounded-2xl border border-white/20 px-4 py-2 text-sm hover:bg-card/5">Annuler</button>
+            
+              <button type="submit" disabled={createReservationLoading} className="rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                {createReservationLoading ? "Création..." : "Créer la réservation"}
+              </button>
+            </div>
+            
+          </form>
+        </ModalShell>
+      )}
 
       {exportReservationsOpen && (
         <ModalShell title="Exporter les réservations" description="Choisissez si vous voulez exporter toutes les réservations filtrées ou une période précise." onClose={() => setExportReservationsOpen(false)}>
@@ -1831,6 +2250,17 @@ export const AdminReservationsPage = () => {
 
       {selectedReservation && (
         <ModalShell title={`Réservation #${selectedReservation.id}`} description={`${selectedReservation.customerFirstName} ${selectedReservation.customerLastName}`} onClose={() => setSelectedReservation(null)}>
+          <div className="mb-4 flex justify-end gap-3">
+            <button type="button" disabled={busyId === selectedReservation.id} onClick={() => void updateReservationStatus(selectedReservation.id, "confirm")} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200 transition hover:bg-emerald-500/20">
+              <CheckCircle2 className="h-4 w-4" />
+              Confirmer la réservation
+            </button>
+            <button type="button" disabled={busyId === selectedReservation.id} onClick={() => void updateReservationStatus(selectedReservation.id, "cancel")} className="inline-flex items-center gap-2 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200 transition hover:bg-rose-500/20">
+              <XCircle className="h-4 w-4" />
+              Annuler la réservation
+            </button>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
             <DetailCard icon={CarFront} label="Voiture" value={selectedReservationCar ? `${selectedReservationCar.brand} ${selectedReservationCar.model}` : `Voiture #${selectedReservation.carId}`} subvalue={selectedReservationCar?.category ?? "Véhicule lié à la réservation"} />
             <DetailCard icon={CalendarRange} label="Période" value={`${formatDate(selectedReservation.pickupDate)} au ${formatDate(selectedReservation.returnDate)}`} subvalue={`${selectedReservation.pickupCity} → ${selectedReservation.returnCity}`} />
@@ -1856,19 +2286,39 @@ export const AdminReservationsPage = () => {
             </div>
             
             <div className="md:col-span-2 flex flex-wrap items-center justify-end gap-3">
-              <button type="button" disabled={busyId === selectedReservation.id} onClick={() => void updateReservationStatus(selectedReservation.id, "confirm")} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-200">
-                <CheckCircle2 className="h-4 w-4" />
-                Confirmer
-              </button>
-              <button type="button" disabled={busyId === selectedReservation.id} onClick={() => void updateReservationStatus(selectedReservation.id, "cancel")} className="inline-flex items-center gap-2 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">
-                <XCircle className="h-4 w-4" />
-                Annuler
+              <button type="button" onClick={() => {
+                if (!selectedReservation) return;
+                // build extras mapping from reservation labels -> form quantities (default 1 when present)
+                const prefilledExtras = extrasCatalog.reduce<Record<string, number>>((acc, extra) => {
+                  acc[extra.id] = selectedReservation.extras.includes(extra.label) ? 1 : 0;
+                  return acc;
+                }, { ...extrasTemplate });
+
+                setEditReservationForm({
+                  id: selectedReservation.id,
+                  carId: String(selectedReservation.carId),
+                  firstName: selectedReservation.customerFirstName,
+                  lastName: selectedReservation.customerLastName,
+                  email: selectedReservation.customerEmail,
+                  phone: selectedReservation.customerPhone,
+                  documentId: selectedReservation.documentId ?? "",
+                  pickupCity: selectedReservation.pickupCity,
+                  pickupDate: selectedReservation.pickupDate,
+                  returnCity: selectedReservation.returnCity,
+                  returnDate: selectedReservation.returnDate,
+                  notes: selectedReservation.notes ?? "",
+                  extras: prefilledExtras,
+                });
+                setEditReservationOpen(true);
+              }} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200 transition hover:bg-white/10">
+                <Wrench className="h-4 w-4" />
+                Modifier
               </button>
               <button
                 type="button"
                 disabled={busyId === selectedReservation.id}
                 onClick={() => setPendingDeleteReservation(selectedReservation)}
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200 hover:bg-white/10"
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-slate-200 transition hover:bg-white/10"
               >
                 <Trash2 className="h-4 w-4" />
                 Supprimer
@@ -1899,6 +2349,161 @@ export const AdminReservationsPage = () => {
               </button>
             </div>
           </div>
+        </ModalShell>
+      )}
+
+      {editReservationOpen && (
+        <ModalShell title="Modifier la réservation" description="Mettez à jour les détails de la réservation" onClose={() => setEditReservationOpen(false)}>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            if (!editReservationForm.id) return;
+            setEditReservationLoading(true);
+            try {
+              await apiClient.put(`/reservations/${editReservationForm.id}`, {
+                carId: Number(editReservationForm.carId),
+                firstName: editReservationForm.firstName.trim(),
+                lastName: editReservationForm.lastName.trim(),
+                email: editReservationForm.email.trim().toLowerCase(),
+                phone: editReservationForm.phone.trim(),
+                documentId: editReservationForm.documentId.trim(),
+                pickupCity: editReservationForm.pickupCity.trim(),
+                pickupDate: editReservationForm.pickupDate,
+                returnCity: editReservationForm.returnCity.trim(),
+                returnDate: editReservationForm.returnDate,
+                notes: editReservationForm.notes.trim() || undefined,
+                extras: extrasCatalog
+                  .filter((extra) => (editReservationForm.extras?.[extra.id] ?? 0) > 0)
+                  .map((extra) => ({ label: extra.label, quantity: editReservationForm.extras?.[extra.id] ?? 0, unitPrice: extra.unitPrice })),
+              });
+              toast({ title: "Réservation mise à jour", description: "La réservation a été modifiée avec succès." });
+              setEditReservationOpen(false);
+              await refresh();
+            } catch (error) {
+              toast({ title: "Impossible de modifier", description: resolveFriendlyError(error), variant: "destructive" });
+            } finally {
+              setEditReservationLoading(false);
+            }
+          }} className="grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-xs text-slate-300">
+                Véhicule
+                <select required value={editReservationForm.carId} onChange={(ev) => setEditReservationForm((p) => ({ ...p, carId: ev.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm">
+                  <option value="">Sélectionner</option>
+                  {cars.filter((car) => car.remoteId != null).map((car) => (
+                    <option key={car.id} value={String(car.remoteId)}>{car.brand} {car.model}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-xs text-slate-300">
+                CIN / Passeport
+                <input value={editReservationForm.documentId} onChange={(ev) => setEditReservationForm((p) => ({ ...p, documentId: ev.target.value }))} placeholder="Ex. AA123456 ou P1234567" className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-xs text-slate-300">
+                Prénom
+                <input value={editReservationForm.firstName} onChange={(ev) => setEditReservationForm((p) => ({ ...p, firstName: ev.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+              <label className="space-y-1 text-xs text-slate-300">
+                Nom
+                <input value={editReservationForm.lastName} onChange={(ev) => setEditReservationForm((p) => ({ ...p, lastName: ev.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-xs text-slate-300">
+                Email
+                <input type="email" value={editReservationForm.email} onChange={(ev) => setEditReservationForm((p) => ({ ...p, email: ev.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+              <label className="space-y-1 text-xs text-slate-300">
+                Téléphone
+                <input value={editReservationForm.phone} onChange={(ev) => setEditReservationForm((p) => ({ ...p, phone: ev.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-xs text-slate-300">
+                Ville départ
+                <input value={editReservationForm.pickupCity} onChange={(ev) => setEditReservationForm((p) => ({ ...p, pickupCity: ev.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+              <label className="space-y-1 text-xs text-slate-300">
+                Ville retour
+                <input value={editReservationForm.returnCity} onChange={(ev) => setEditReservationForm((p) => ({ ...p, returnCity: ev.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-xs text-slate-300">
+                Date départ
+                <input type="date" min={todayIso} value={editReservationForm.pickupDate} onChange={(ev) => setEditReservationForm((p) => ({ ...p, pickupDate: ev.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+              <label className="space-y-1 text-xs text-slate-300">
+                Date retour
+                <input type="date" min={editReservationForm.pickupDate ? addDaysToIso(editReservationForm.pickupDate, 2) : addDaysToIso(todayIso, 2)} value={editReservationForm.returnDate} onChange={(ev) => setEditReservationForm((p) => ({ ...p, returnDate: ev.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+              </label>
+            </div>
+
+            <label className="space-y-1 text-xs text-slate-300">
+              Notes
+              <textarea value={editReservationForm.notes} onChange={(ev) => setEditReservationForm((p) => ({ ...p, notes: ev.target.value }))} className="h-20 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm" />
+            </label>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3">
+              <div className="flex items-center gap-2">
+                <CircleDollarSign className="h-4 w-4 text-slate-400" />
+                <p className="text-xs font-medium text-slate-100">Montant de mise à jour</p>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl bg-white/[0.03] px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-[0.25em] text-slate-500">Jours</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-100">{editRentalDays}</p>
+                </div>
+                <div className="rounded-xl bg-white/[0.03] px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-[0.25em] text-slate-500">Extras</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-100">{formatCurrency(editExtrasTotal)}</p>
+                </div>
+                <div className="rounded-xl bg-white/[0.03] px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-[0.25em] text-slate-500">Total estimé</p>
+                  <p className="mt-1 text-sm font-semibold text-blue-300">{formatCurrency(editEstimatedTotal)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3">
+              <p className="text-xs font-medium text-slate-100">Extras</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {extrasCatalog.map((extra) => (
+                  <div key={extra.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={(editReservationForm.extras?.[extra.id] ?? 0) > 0} onChange={(e) => setEditReservationForm((p) => ({ ...p, extras: { ...(p.extras ?? {}), [extra.id]: e.target.checked ? 1 : 0 } }))} className="h-4 w-4" />
+                    </label>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-slate-100">{extra.label}</div>
+                        <div className="text-xs text-slate-400">{formatCurrency(extra.unitPrice)}</div>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input type="number" min={0} value={(editReservationForm.extras?.[extra.id] ?? 0)} onChange={(ev) => setEditReservationForm((p) => ({ ...p, extras: { ...(p.extras ?? {}), [extra.id]: Number(ev.target.value || 0) } }))} className="w-20 rounded-2xl border border-white/10 bg-slate-950/60 px-2 py-1 text-sm text-slate-100" />
+                        <span className="text-xs text-slate-400">unités</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setEditReservationOpen(false)} className="inline-flex items-center gap-2 rounded-2xl border border-white/20 px-4 py-2 text-sm hover:bg-card/5">
+                <XCircle className="h-4 w-4" />
+                Annuler
+              </button>
+              <button type="submit" disabled={editReservationLoading} className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                <RefreshCcw className="h-4 w-4" />
+                {editReservationLoading ? "Enregistrement..." : "Enregistrer"}
+              </button>
+            </div>
+          </form>
         </ModalShell>
       )}
     </div>
