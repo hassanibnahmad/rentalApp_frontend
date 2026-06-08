@@ -81,6 +81,8 @@ type QuickReservationForm = {
   extras?: Record<string, number>;
 };
 
+export { AdminAutomationPage } from "./AdminAutomation";
+
 type AdminRouteKey =
   | "dashboard"
   | "fleet"
@@ -88,6 +90,7 @@ type AdminRouteKey =
   | "customers"
   | "payments"
   | "reports"
+  | "automation"
   | "settings";
 
 type PaymentProvider = "Stripe" | "PayPal" | "Direct";
@@ -155,6 +158,7 @@ const ADMIN_ROUTES: Array<{
   { key: "customers", label: "Clients", description: "Comptes clients", icon: Users, path: "/admin/customers" },
   { key: "payments", label: "Paiements", description: "Encaissements", icon: CircleDollarSign, path: "/admin/payments" },
   { key: "reports", label: "Rapports & indicateurs", description: "KPI et tendances", icon: FileText, path: "/admin/reports" },
+  { key: "automation", label: "Automation WhatsApp", description: "Flows, jobs & messages", icon: Mail, path: "/admin/automation" },
   { key: "settings", label: "Paramètres", description: "Préférences", icon: Settings2, path: "/admin/settings" },
 ];
 

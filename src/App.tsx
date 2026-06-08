@@ -16,6 +16,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { CarInventoryProvider } from "@/contexts/CarInventoryContext";
 import {
+  AdminAutomationPage,
   AdminDashboardPage,
   AdminCustomersPage,
   AdminFleetPage,
@@ -72,6 +73,10 @@ const App = () => (
               <Route
                 path="/admin/reports"
                 element={<ProtectedRoute roles={["admin"]}><AdminShell><AdminReportsPage /></AdminShell></ProtectedRoute>}
+              />
+              <Route
+                path="/admin/automation"
+                element={<ProtectedRoute roles={["admin"]}><AdminShell><AdminAutomationPage /></AdminShell></ProtectedRoute>}
               />
               <Route
                 path="/admin/settings"
